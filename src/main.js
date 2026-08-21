@@ -1,7 +1,13 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import "./style.css";
-import { createPreviewSummary, normalizeTexturePath, parseMinecraftModel, resolveUploadedTexture } from "./modelCore.js";
+import {
+  createPreviewSummary,
+  createStatusFeedback,
+  normalizeTexturePath,
+  parseMinecraftModel,
+  resolveUploadedTexture
+} from "./modelCore.js";
 
 const modelInput = document.querySelector("#model-file");
 const textureInput = document.querySelector("#texture-files");
@@ -77,17 +83,9 @@ function renderCurrentModel() {
   replaceModelGroup(buildModelGroup(parsed));
   renderSummary(summary);
 
-  if (!summary.ok) {
-    statusNode.className = "status status-error";
-    statusNode.textContent = "The model has errors that need to be fixed before it can be previewed reliably.";
-    return;
-  }
-
-  statusNode.className = summary.warnings.length > 0 ? "status status-warning" : "status status-ok";
-  statusNode.textContent =
-    summary.warnings.length > 0
-      ? "Preview loaded with warnings. Review the feedback before approving the asset."
-      : "Preview loaded successfully.";
+  const statusFeedback = createStatusFeedback(summary);
+  statusNode.className = statusFeedback.className;
+  statusNode.textContent = statusFeedback.message;
 }
 
 function buildModelGroup(parsed) {

@@ -20,6 +20,8 @@ npm run dev
 
 Then open the local Vite URL and upload a Minecraft model JSON file. Texture uploads are optional; the previewer falls back to generated colors when matching texture files are not available.
 
+For manual generated-item previews, upload the `models/item/*.json` file and its matching `textures/item/*.png` image. If the summary shows `Unresolved textures` as anything other than `None`, upload the listed texture file or preserve that resource-pack path so the preview can match it.
+
 ## Agent tool usage
 
 Validate and summarize a generated model:
