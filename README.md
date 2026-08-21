@@ -64,8 +64,12 @@ mcasset currently provides deterministic checks for JSON/model structure and tex
 ## Supported model features
 
 - `elements[].from` / `elements[].to` cuboids
+- Elementless generated item sprites for `minecraft:item/generated`, `item/generated`, and `builtin/generated` models with `textures.layer0`
+- Elementless particle-only placeholder previews for special block models with `textures.particle`
 - Basic per-face texture reference resolution
 - Model-level `textures`
 - Warnings for malformed or out-of-bounds coordinates
 
-Advanced Minecraft features such as parent model inheritance, display transforms, rotations, tinting, UV remapping, and resource-pack-wide texture resolution are intentionally left for future iterations.
+Uploaded item textures can be matched by basename or common resource-pack paths such as `item/name.png`, `textures/item/name.png`, and `assets/minecraft/textures/item/name.png`.
+
+Advanced Minecraft features such as full parent model inheritance, generated item pixel extrusion/thickness, block-entity and special-renderer emulation, display transforms, rotations, tinting, UV remapping, and resource-pack-wide texture resolution are intentionally left for future iterations.

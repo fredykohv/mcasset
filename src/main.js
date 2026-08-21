@@ -93,6 +93,14 @@ function renderCurrentModel() {
 function buildModelGroup(parsed) {
   const group = new THREE.Group();
 
+  if (parsed.modelKind === "generated_item") {
+    return buildGeneratedItemGroup(parsed);
+  }
+
+  if (parsed.modelKind === "particle_placeholder") {
+    return buildParticlePlaceholderGroup(parsed);
+  }
+
   parsed.elements.forEach((element, index) => {
     const size = [
       Math.max(element.to[0] - element.from[0], 0.01),
@@ -117,6 +125,59 @@ function buildModelGroup(parsed) {
   });
 
   return group;
+}
+
+function buildGeneratedItemGroup(parsed) {
+  const group = new THREE.Group();
+  const texture = resolveUploadedTexture(parsed.textures.layer0, uploadedTextures);
+  const material = createSpriteMaterial(texture, 0x9ca3af, texture ? 1 : 0.28);
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(16, 16), material);
+  mesh.name = "Generated item sprite";
+  group.add(mesh);
+
+  const outline = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.PlaneGeometry(16, 16)),
+    new THREE.LineBasicMaterial({ color: 0x111827 })
+  );
+  group.add(outline);
+
+  return group;
+}
+
+function buildParticlePlaceholderGroup(parsed) {
+  const group = new THREE.Group();
+  const texture = resolveUploadedTexture(parsed.textures.particle, uploadedTextures);
+  const geometry = new THREE.PlaneGeometry(12, 12);
+  const mesh = new THREE.Mesh(geometry, createSpriteMaterial(texture, 0xf59e0b, texture ? 0.85 : 0.32));
+  mesh.name = "Particle texture placeholder";
+  group.add(mesh);
+
+  const wireframe = new THREE.LineSegments(
+    new THREE.EdgesGeometry(geometry),
+    new THREE.LineBasicMaterial({ color: 0xfbbf24 })
+  );
+  group.add(wireframe);
+
+  return group;
+}
+
+function createSpriteMaterial(texture, fallbackColor, fallbackOpacity) {
+  if (texture) {
+    return new THREE.MeshBasicMaterial({
+      map: texture,
+      side: THREE.DoubleSide,
+      transparent: true,
+      alphaTest: 0.1
+    });
+  }
+
+  return new THREE.MeshBasicMaterial({
+    color: fallbackColor,
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: fallbackOpacity,
+    wireframe: false
+  });
 }
 
 function createFaceMaterials(element, textures, index) {
@@ -147,6 +208,12 @@ function resolveFaceTexture(face, textures) {
 
 function collectResolvedTextureReferences(parsed) {
   const resolved = new Set();
+
+  for (const texturePath of parsed.textureReferences) {
+    if (resolveUploadedTexture(texturePath, uploadedTextures)) {
+      resolved.add(texturePath);
+    }
+  }
 
   for (const element of parsed.elements) {
     for (const face of Object.values(element.faces)) {
@@ -193,6 +260,7 @@ function disposeGroup(group) {
 function renderSummary(summary) {
   const rows = [
     ["File", summary.filename],
+    ["Preview mode", summary.modelKind],
     ["Elements", String(summary.elementCount)],
     ["Textures", String(summary.textureCount)],
     ["Texture references", summary.textureReferences.join(", ") || "None"],

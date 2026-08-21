@@ -30,6 +30,7 @@ function renderReport(summary) {
     ["Status", summary.status],
     ["Decision", summary.decision],
     ["File", summary.filename],
+    ["Preview mode", summary.modelKind],
     ["Elements", summary.elementCount],
     ["Textures", summary.textureCount],
     ["Texture references", summary.textureReferences.join(", ") || "None"],

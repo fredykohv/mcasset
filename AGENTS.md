@@ -8,6 +8,8 @@ Build a Minecraft asset preview website and an agent-usable feedback tool. The p
 
 - Start with Minecraft Java Edition block/item model JSON files.
 - Render `elements` cuboids in a browser preview.
+- Render elementless generated item models with `textures.layer0` as transparent sprite previews.
+- Show a warning placeholder for elementless particle-only block models; block-entity and special-renderer fidelity remains backlog.
 - Accept optional texture image uploads and map them to model texture references by basename.
 - Provide an agent-facing command that validates an asset and writes machine-readable feedback.
 

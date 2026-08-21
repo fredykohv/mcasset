@@ -1,4 +1,5 @@
 const DIRECTIONS = ["east", "west", "up", "down", "south", "north"];
+const GENERATED_ITEM_PARENTS = new Set(["minecraft:item/generated", "item/generated", "minecraft:builtin/generated", "builtin/generated"]);
 
 export function parseMinecraftModel(source, filename = "model.json") {
   const errors = [];
@@ -12,6 +13,7 @@ export function parseMinecraftModel(source, filename = "model.json") {
       ok: false,
       filename,
       model: null,
+      modelKind: "invalid",
       elements: [],
       textures: {},
       textureReferences: [],
@@ -25,13 +27,28 @@ export function parseMinecraftModel(source, filename = "model.json") {
   }
 
   const textures = normalizeTextures(model?.textures, warnings);
-  const elements = normalizeElements(model?.elements, warnings, errors);
-  const textureReferences = collectTextureReferences(elements, textures);
+  const modelKind = determineModelKind(model, textures);
+  const elements = normalizeElements(model?.elements, warnings, errors, { allowMissingElements: modelKind !== "cuboid" });
+
+  if (modelKind === "generated_item") {
+    warnings.push(
+      "Generated item model uses a sprite preview from textures.layer0; pixel extrusion/thickness is not yet supported."
+    );
+  }
+
+  if (modelKind === "particle_placeholder") {
+    warnings.push(
+      "Elementless model uses textures.particle only; rendering a placeholder because block-entity/special-renderer fidelity is not yet supported."
+    );
+  }
+
+  const textureReferences = collectTextureReferences(elements, textures, modelKind);
 
   return {
     ok: errors.length === 0,
     filename,
     model,
+    modelKind,
     elements,
     textures,
     textureReferences,
@@ -42,9 +59,11 @@ export function parseMinecraftModel(source, filename = "model.json") {
 
 export function createPreviewSummary(parsed, resolvedTextureReferences = new Set()) {
   const unresolvedTextureReferences = [...parsed.textureReferences].filter((reference) => !resolvedTextureReferences.has(reference));
+  const blockingUnresolvedTextureReferences =
+    parsed.modelKind === "particle_placeholder" ? [] : unresolvedTextureReferences;
   const blockers = [
     ...parsed.errors.map((message) => ({ code: "validation-error", message })),
-    ...unresolvedTextureReferences.map((reference) => ({
+    ...blockingUnresolvedTextureReferences.map((reference) => ({
       code: "unresolved-texture-reference",
       message: `Texture reference could not be resolved: ${reference}`,
       reference
@@ -61,10 +80,11 @@ export function createPreviewSummary(parsed, resolvedTextureReferences = new Set
     : buildApprovalSteps(parsed);
 
   return {
-    ok: parsed.ok,
+    ok: !hasBlockers,
     status: hasBlockers ? "fail" : parsed.warnings.length > 0 ? "pass_with_warnings" : "pass",
     decision: hasBlockers ? "revise_asset" : "request_user_approval",
     filename: parsed.filename,
+    modelKind: parsed.modelKind,
     elementCount: parsed.elements.length,
     textureCount: Object.keys(parsed.textures).length,
     textureReferences: parsed.textureReferences,
@@ -81,6 +101,7 @@ export function createPreviewSummary(parsed, resolvedTextureReferences = new Set
     },
     metadata: {
       hasElements: parsed.elements.length > 0,
+      previewMode: parsed.modelKind,
       hasWarnings: parsed.warnings.length > 0,
       hasErrors: parsed.errors.length > 0,
       hasUnresolvedTextures: unresolvedTextureReferences.length > 0
@@ -157,7 +178,11 @@ function normalizeTextures(textures, warnings) {
   );
 }
 
-function normalizeElements(elements, warnings, errors) {
+function normalizeElements(elements, warnings, errors, options = {}) {
+  if (elements === undefined && options.allowMissingElements) {
+    return [];
+  }
+
   if (!Array.isArray(elements)) {
     errors.push("Model must include an `elements` array.");
     return [];
@@ -248,8 +273,16 @@ function normalizeFaceUv(uv, elementIndex, direction, warnings) {
   return uv;
 }
 
-function collectTextureReferences(elements, textures) {
+function collectTextureReferences(elements, textures, modelKind) {
   const references = new Set();
+
+  if (modelKind === "generated_item" && textures.layer0) {
+    references.add(textures.layer0);
+  }
+
+  if (modelKind === "particle_placeholder" && textures.particle) {
+    references.add(textures.particle);
+  }
 
   for (const element of elements) {
     for (const face of Object.values(element.faces)) {
@@ -263,6 +296,24 @@ function collectTextureReferences(elements, textures) {
   }
 
   return [...references].sort();
+}
+
+function determineModelKind(model, textures) {
+  const hasElements = Array.isArray(model?.elements) && model.elements.length > 0;
+
+  if (!hasElements && isGeneratedItemParent(model?.parent) && typeof textures.layer0 === "string") {
+    return "generated_item";
+  }
+
+  if (!hasElements && typeof textures.particle === "string") {
+    return "particle_placeholder";
+  }
+
+  return "cuboid";
+}
+
+function isGeneratedItemParent(parent) {
+  return typeof parent === "string" && GENERATED_ITEM_PARENTS.has(parent);
 }
 
 function buildRevisionSteps(parsed, unresolvedTextureReferences) {
