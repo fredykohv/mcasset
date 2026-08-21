@@ -40,13 +40,16 @@ export function parseMinecraftModel(source, filename = "model.json") {
   };
 }
 
-export function createPreviewSummary(parsed) {
+export function createPreviewSummary(parsed, resolvedTextureReferences = new Set()) {
+  const unresolvedTextureReferences = [...parsed.textureReferences].filter((reference) => !resolvedTextureReferences.has(reference));
+
   return {
     ok: parsed.ok,
     filename: parsed.filename,
     elementCount: parsed.elements.length,
     textureCount: Object.keys(parsed.textures).length,
     textureReferences: parsed.textureReferences,
+    unresolvedTextureReferences,
     errors: parsed.errors,
     warnings: parsed.warnings
   };
@@ -58,6 +61,50 @@ export function textureBasename(texturePath) {
   }
 
   return texturePath.replace(/^#/, "").split("/").pop().replace(/\.[^.]+$/, "");
+}
+
+export function textureCandidates(texturePath) {
+  if (!texturePath || typeof texturePath !== "string") {
+    return [];
+  }
+
+  const raw = texturePath.replace(/^#/, "").replace(/\\/g, "/").replace(/^\//, "");
+  const noExt = raw.replace(/\.[^.]+$/, "");
+  const noNamespace = noExt.includes(":") ? noExt.split(":").slice(1).join(":") : noExt;
+  const withBlock = noNamespace.startsWith("block/") ? noNamespace : `block/${noNamespace}`;
+  const variants = [
+    `${noExt}.png`,
+    `${noNamespace}.png`,
+    `${withBlock}.png`,
+    `textures/${noNamespace}.png`,
+    `textures/${withBlock}.png`,
+    `assets/minecraft/textures/${noNamespace}.png`,
+    `assets/minecraft/textures/${withBlock}.png`,
+    `${textureBasename(noExt)}.png`
+  ];
+
+  return [...new Set(variants.map((variant) => normalizeTexturePath(variant)))];
+}
+
+export function normalizeTexturePath(texturePath) {
+  if (!texturePath || typeof texturePath !== "string") {
+    return "";
+  }
+
+  return `/${texturePath.replace(/\\/g, "/").replace(/^\//, "")}`;
+}
+
+export function resolveUploadedTexture(texturePath, uploadedTextureIndex) {
+  const candidates = textureCandidates(texturePath);
+
+  for (const candidate of candidates) {
+    const texture = uploadedTextureIndex.get(candidate);
+    if (texture) {
+      return texture;
+    }
+  }
+
+  return null;
 }
 
 function normalizeTextures(textures, warnings) {
@@ -148,11 +195,24 @@ function normalizeFaces(faces, elementIndex, warnings) {
 
     normalized[direction] = {
       texture: typeof face.texture === "string" ? face.texture : null,
-      uv: Array.isArray(face.uv) ? face.uv : null
+      uv: normalizeFaceUv(face.uv, elementIndex, direction, warnings)
     };
   }
 
   return normalized;
+}
+
+function normalizeFaceUv(uv, elementIndex, direction, warnings) {
+  if (uv === undefined) {
+    return null;
+  }
+
+  if (!Array.isArray(uv) || uv.length !== 4 || !uv.every((value) => Number.isFinite(value))) {
+    warnings.push(`elements[${elementIndex}].faces.${direction}.uv must be an array of four finite numbers.`);
+    return null;
+  }
+
+  return uv;
 }
 
 function collectTextureReferences(elements, textures) {

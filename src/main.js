@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import "./style.css";
-import { createPreviewSummary, parseMinecraftModel, textureBasename } from "./modelCore.js";
+import { createPreviewSummary, normalizeTexturePath, parseMinecraftModel, resolveUploadedTexture } from "./modelCore.js";
 
 const modelInput = document.querySelector("#model-file");
 const textureInput = document.querySelector("#texture-files");
@@ -61,7 +61,7 @@ textureInput.addEventListener("change", async (event) => {
     texture.magFilter = THREE.NearestFilter;
     texture.minFilter = THREE.NearestFilter;
 
-    uploadedTextures.set(textureBasename(file.name), texture);
+    uploadedTextures.set(normalizeTexturePath(file.webkitRelativePath || file.name), texture);
   }
 
   if (currentModelText) {
@@ -71,7 +71,8 @@ textureInput.addEventListener("change", async (event) => {
 
 function renderCurrentModel() {
   const parsed = parseMinecraftModel(currentModelText, currentFilename);
-  const summary = createPreviewSummary(parsed);
+  const resolvedTextureReferences = collectResolvedTextureReferences(parsed);
+  const summary = createPreviewSummary(parsed, resolvedTextureReferences);
 
   replaceModelGroup(buildModelGroup(parsed));
   renderSummary(summary);
@@ -141,7 +142,27 @@ function resolveFaceTexture(face, textures) {
 
   const key = face.texture.replace(/^#/, "");
   const texturePath = textures[key] ?? face.texture;
-  return uploadedTextures.get(textureBasename(texturePath)) ?? uploadedTextures.get(key) ?? null;
+  return resolveUploadedTexture(texturePath, uploadedTextures);
+}
+
+function collectResolvedTextureReferences(parsed) {
+  const resolved = new Set();
+
+  for (const element of parsed.elements) {
+    for (const face of Object.values(element.faces)) {
+      if (!face?.texture) {
+        continue;
+      }
+
+      const key = face.texture.replace(/^#/, "");
+      const texturePath = parsed.textures[key] ?? face.texture;
+      if (resolveUploadedTexture(texturePath, uploadedTextures)) {
+        resolved.add(texturePath);
+      }
+    }
+  }
+
+  return resolved;
 }
 
 function fallbackColor(index, direction) {
@@ -175,6 +196,7 @@ function renderSummary(summary) {
     ["Elements", String(summary.elementCount)],
     ["Textures", String(summary.textureCount)],
     ["Texture references", summary.textureReferences.join(", ") || "None"],
+    ["Unresolved textures", summary.unresolvedTextureReferences.join(", ") || "None"],
     ["Errors", summary.errors.join(" | ") || "None"],
     ["Warnings", summary.warnings.join(" | ") || "None"]
   ];
