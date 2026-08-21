@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "asset:preview": "node scripts/preview-asset.mjs"
+    "asset:preview": "node scripts/preview-asset.mjs",
+    "test": "node --test"
   },
   "dependencies": {
     "three": "^0.168.0",
