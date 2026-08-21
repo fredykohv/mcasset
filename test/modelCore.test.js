@@ -36,6 +36,33 @@ test("includes unresolved texture references in preview summary diagnostics", ()
 
   const summary = createPreviewSummary(parsed, new Set(["block/stone"]));
   assert.deepEqual(summary.unresolvedTextureReferences, ["#missing"]);
+  assert.equal(summary.status, "fail");
+  assert.equal(summary.decision, "revise_asset");
+  assert.equal(summary.agentGuidance.recommendedAction, "revise_asset");
+  assert.ok(summary.blockers.some((blocker) => blocker.code === "unresolved-texture-reference"));
+  assert.ok(summary.suggestedNextSteps.some((step) => step.includes("Provide texture files")));
+});
+
+test("marks clean model summaries as ready for user approval", () => {
+  const parsed = parseMinecraftModel(
+    JSON.stringify({
+      textures: { side: "block/stone" },
+      elements: [
+        {
+          from: [0, 0, 0],
+          to: [16, 16, 16],
+          faces: {
+            north: { texture: "#side" }
+          }
+        }
+      ]
+    }),
+    "stone.json"
+  );
+  const summary = createPreviewSummary(parsed, new Set(["block/stone"]));
+  assert.equal(summary.status, "pass");
+  assert.equal(summary.decision, "request_user_approval");
+  assert.equal(summary.agentGuidance.recommendedAction, "request_user_approval");
 });
 
 test("normalizes valid face uv values and warns on invalid uv arrays", () => {
