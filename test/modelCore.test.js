@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createPreviewSummary, parseMinecraftModel, resolveUploadedTexture } from "../src/modelCore.js";
+import { createPreviewSummary, parseMinecraftModel, resolveUploadedTexture, textureCandidates } from "../src/modelCore.js";
 
 test("resolves uploaded textures from common resource-pack path variants", () => {
   const index = new Map([
@@ -84,4 +84,70 @@ test("normalizes valid face uv values and warns on invalid uv arrays", () => {
   assert.deepEqual(parsed.elements[0].faces.north.uv, [0, 0, 16, 16]);
   assert.equal(parsed.elements[0].faces.south.uv, null);
   assert.ok(parsed.warnings.some((warning) => warning.includes("uv must be an array of four finite numbers")));
+});
+
+test("parses elementless generated item models with layer0 texture", () => {
+  const parsed = parseMinecraftModel(
+    JSON.stringify({
+      parent: "minecraft:item/generated",
+      textures: { layer0: "minecraft:item/acacia_hanging_sign" }
+    }),
+    "acacia_hanging_sign.json"
+  );
+
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.modelKind, "generated_item");
+  assert.equal(parsed.elements.length, 0);
+  assert.deepEqual(parsed.textureReferences, ["minecraft:item/acacia_hanging_sign"]);
+
+  const summary = createPreviewSummary(parsed, new Set(["minecraft:item/acacia_hanging_sign"]));
+  assert.equal(summary.status, "pass_with_warnings");
+  assert.equal(summary.decision, "request_user_approval");
+});
+
+test("accepts generated item parent aliases", () => {
+  for (const parent of ["minecraft:item/generated", "item/generated", "builtin/generated"]) {
+    const parsed = parseMinecraftModel(JSON.stringify({ parent, textures: { layer0: "item/stick" } }));
+    assert.equal(parsed.ok, true);
+    assert.equal(parsed.modelKind, "generated_item");
+  }
+});
+
+test("resolves generated item texture path candidates from common upload layouts", () => {
+  const expectedCandidates = [
+    "/minecraft:item/acacia_hanging_sign.png",
+    "/item/acacia_hanging_sign.png",
+    "/textures/item/acacia_hanging_sign.png",
+    "/assets/minecraft/textures/item/acacia_hanging_sign.png",
+    "/acacia_hanging_sign.png"
+  ];
+
+  assert.deepEqual(
+    textureCandidates("minecraft:item/acacia_hanging_sign").filter((candidate) => expectedCandidates.includes(candidate)),
+    expectedCandidates
+  );
+
+  for (const candidate of expectedCandidates.slice(1)) {
+    assert.equal(resolveUploadedTexture("minecraft:item/acacia_hanging_sign", new Map([[candidate, candidate]])), candidate);
+  }
+});
+
+test("uses a particle placeholder warning for elementless particle-only models", () => {
+  const parsed = parseMinecraftModel(
+    JSON.stringify({
+      textures: { particle: "minecraft:block/chest" }
+    }),
+    "chest.json"
+  );
+
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.modelKind, "particle_placeholder");
+  assert.deepEqual(parsed.textureReferences, ["minecraft:block/chest"]);
+  assert.ok(parsed.warnings.some((warning) => warning.includes("particle")));
+
+  const summary = createPreviewSummary(parsed);
+  assert.equal(summary.status, "pass_with_warnings");
+  assert.equal(summary.decision, "request_user_approval");
+  assert.deepEqual(summary.unresolvedTextureReferences, ["minecraft:block/chest"]);
+  assert.deepEqual(summary.blockers, []);
 });
