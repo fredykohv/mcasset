@@ -24,6 +24,7 @@ Build a Minecraft asset preview website and an agent-usable feedback tool. The p
 ```bash
 npm install
 npm run dev
+npm test
 npm run build
 npm run asset:preview -- ./path/to/model.json --out ./preview-output
 ```
