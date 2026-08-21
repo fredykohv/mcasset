@@ -1,0 +1,16 @@
+{
+  "name": "mcasset",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "asset:preview": "node scripts/preview-asset.mjs"
+  },
+  "dependencies": {
+    "three": "^0.168.0",
+    "vite": "^8.2.2"
+  }
+}
