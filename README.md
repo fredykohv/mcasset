@@ -16,6 +16,7 @@ The first supported target is Java Edition block/item model JSON files. The prev
 ```bash
 npm install
 npm run dev
+npm test
 ```
 
 Then open the local Vite URL and upload a Minecraft model JSON file. Texture uploads are optional; the previewer falls back to generated colors when matching texture files are not available.
