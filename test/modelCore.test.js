@@ -1,6 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createPreviewSummary, parseMinecraftModel, resolveUploadedTexture, textureCandidates } from "../src/modelCore.js";
+import {
+  createPreviewSummary,
+  createStatusFeedback,
+  parseMinecraftModel,
+  resolveUploadedTexture,
+  textureCandidates
+} from "../src/modelCore.js";
 
 test("resolves uploaded textures from common resource-pack path variants", () => {
   const index = new Map([
@@ -41,6 +47,35 @@ test("includes unresolved texture references in preview summary diagnostics", ()
   assert.equal(summary.agentGuidance.recommendedAction, "revise_asset");
   assert.ok(summary.blockers.some((blocker) => blocker.code === "unresolved-texture-reference"));
   assert.ok(summary.suggestedNextSteps.some((step) => step.includes("Provide texture files")));
+});
+
+test("status feedback describes unresolved textures without calling them model errors", () => {
+  const parsed = parseMinecraftModel(
+    JSON.stringify({
+      textures: { layer0: "minecraft:item/acacia_hanging_sign" },
+      parent: "minecraft:item/generated"
+    }),
+    "acacia_hanging_sign.json"
+  );
+
+  const summary = createPreviewSummary(parsed);
+  const feedback = createStatusFeedback(summary);
+
+  assert.equal(feedback.className, "status status-error");
+  assert.match(feedback.message, /required texture files are missing/);
+  assert.doesNotMatch(feedback.message, /model JSON errors/);
+  assert.deepEqual(summary.errors, []);
+  assert.equal(summary.status, "fail");
+  assert.equal(summary.decision, "revise_asset");
+});
+
+test("status feedback describes validation errors separately from texture blockers", () => {
+  const parsed = parseMinecraftModel("{", "broken.json");
+  const summary = createPreviewSummary(parsed);
+  const feedback = createStatusFeedback(summary);
+
+  assert.equal(feedback.className, "status status-error");
+  assert.match(feedback.message, /model JSON has validation errors/);
 });
 
 test("marks clean model summaries as ready for user approval", () => {

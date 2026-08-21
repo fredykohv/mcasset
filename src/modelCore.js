@@ -109,6 +109,48 @@ export function createPreviewSummary(parsed, resolvedTextureReferences = new Set
   };
 }
 
+export function createStatusFeedback(summary) {
+  const hasValidationErrors = summary.errors.length > 0;
+  const hasBlockingUnresolvedTextures = summary.blockers.some(
+    (blocker) => blocker.code === "unresolved-texture-reference"
+  );
+
+  if (hasValidationErrors && hasBlockingUnresolvedTextures) {
+    return {
+      className: "status status-error",
+      message:
+        "Preview loaded with validation errors and missing texture files. Fix the listed model JSON errors and add the listed textures to see the asset correctly."
+    };
+  }
+
+  if (hasValidationErrors) {
+    return {
+      className: "status status-error",
+      message: "The model JSON has validation errors that need to be fixed before it can be previewed reliably."
+    };
+  }
+
+  if (hasBlockingUnresolvedTextures) {
+    return {
+      className: "status status-error",
+      message:
+        "Preview loaded, but required texture files are missing or did not match the model references. Add the listed textures to see the asset correctly."
+    };
+  }
+
+  if (summary.warnings.length > 0) {
+    return {
+      className: "status status-warning",
+      message: "Preview loaded with warnings. Review the feedback before approving the asset."
+    };
+  }
+
+  return {
+    className: "status status-ok",
+    message: "Preview loaded successfully."
+  };
+}
+
 export function textureBasename(texturePath) {
   if (!texturePath || typeof texturePath !== "string") {
     return "";
