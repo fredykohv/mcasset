@@ -28,6 +28,23 @@ npm run build
 npm run asset:preview -- ./path/to/model.json --out ./preview-output
 ```
 
+## Agent feedback loop (required workflow)
+
+When you are generating or revising Minecraft model assets, use this loop:
+
+1. Generate or update the model JSON file.
+2. Run `npm run asset:preview -- <model.json> --out <dir>`.
+3. Read `<dir>/summary.json` and branch on `status` / `decision`.
+4. If `status` is `fail` (or decision is `revise_asset`), revise the asset to resolve blockers, then rerun the command.
+5. If `status` is `pass` or `pass_with_warnings` (decision `request_user_approval`), present the results to the user and ask for approval.
+6. In user-facing responses, attach or link `<dir>/preview.html` so approval is based on the generated report.
+
+Interpretation rules:
+
+- Treat `summary.json` as deterministic structural/texture diagnostics with actionable blockers, reasons, and suggested steps.
+- Do not claim automatic approval based on subjective visual quality; this tool does not judge style, artistic quality, or semantic fit with a prompt.
+- Always surface warnings when status is `pass_with_warnings` so the user can decide if they are acceptable.
+
 ## Definitions
 
 - **Website**: the user-facing interactive previewer.
