@@ -18,9 +18,11 @@ npm install
 npm run dev
 ```
 
-Then open the local Vite URL and upload a Minecraft model JSON file. Texture uploads are optional; the previewer falls back to generated colors when matching texture files are not available.
+Then open the local Vite URL. For vanilla or resource-pack comparisons, load the Minecraft `assets` folder or resource-pack root first, then select a model JSON file. The previewer indexes `assets/<namespace>/models/**/*.json` and `assets/<namespace>/textures/**/*.png` so parent/template models and textures can resolve from the loaded folder.
 
-For manual generated-item previews, upload the `models/item/*.json` file and its matching `textures/item/*.png` image. If the summary shows `Unresolved textures` as anything other than `None`, upload the listed texture file or preserve that resource-pack path so the preview can match it.
+You can still upload a single model JSON without a folder. Additional texture uploads remain available for quick tests or overrides. If the summary shows `Unresolved textures` as anything other than `None`, load the containing assets/resource-pack folder or upload the listed texture file.
+
+For local vanilla testing, select the folder that contains `assets/minecraft/...`, for example a Minecraft version assets extraction with paths such as `assets/minecraft/models/block/cube_all.json` and `assets/minecraft/textures/block/stone.png`.
 
 ## Agent tool usage
 
@@ -68,10 +70,12 @@ mcasset currently provides deterministic checks for JSON/model structure and tex
 - `elements[].from` / `elements[].to` cuboids
 - Elementless generated item sprites for `minecraft:item/generated`, `item/generated`, and `builtin/generated` models with `textures.layer0`
 - Elementless particle-only placeholder previews for special block models with `textures.particle`
+- Parent/template lookup from a loaded assets/resource-pack folder
+- Inherited parent textures and parent `elements` when the child has none
 - Basic per-face texture reference resolution
 - Model-level `textures`
 - Warnings for malformed or out-of-bounds coordinates
 
 Uploaded item textures can be matched by basename or common resource-pack paths such as `item/name.png`, `textures/item/name.png`, and `assets/minecraft/textures/item/name.png`.
 
-Advanced Minecraft features such as full parent model inheritance, generated item pixel extrusion/thickness, block-entity and special-renderer emulation, display transforms, rotations, tinting, UV remapping, and resource-pack-wide texture resolution are intentionally left for future iterations.
+Advanced Minecraft features such as generated item pixel extrusion/thickness, block-entity and special-renderer emulation, display transforms, rotations, tinting, UV remapping, and full Minecraft rendering-engine parity are intentionally left for future iterations.

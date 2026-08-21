@@ -29,12 +29,23 @@ npm run asset:preview -- <model.json> --out <output-dir>
 - `elements` array presence and per-element coordinate validation.
 - Face normalization and UV shape checks.
 - Texture reference collection and unresolved texture diagnostics.
+- Browser-only assets/resource-pack folder context for resolving parent/template model JSON and PNG textures.
+- Parent texture inheritance and parent `elements` inheritance when a child model has no own `elements`.
 - Structured pass/fail decision output for agent routing.
 
 ## What mcasset does not verify automatically
 
 - Subjective visual quality or artistic fit.
 - Whether the asset matches user intent beyond deterministic diagnostics.
-- Full Minecraft model system coverage (for example parent inheritance, transforms, rotations, tinting, and full resource-pack graph behavior).
+- Full Minecraft model system coverage (for example transforms, rotations, tinting, UV remapping, full block entity/special renderer fidelity, and full rendering-engine parity).
 
 Use deterministic diagnostics to guide revisions, and keep human approval as the final gate for visual quality and intent alignment.
+
+## Manual browser workflow
+
+1. Load the Minecraft `assets` folder or a resource-pack folder first. Directory upload should include paths like `assets/minecraft/models/block/cube_all.json` and `assets/minecraft/textures/block/stone.png`.
+2. Select a model JSON file to preview.
+3. The previewer resolves parent/template models and textures from the loaded folder when possible.
+4. Upload additional PNG textures only when testing loose files or overrides.
+
+Block entity and special renderer fidelity remains backlog; particle-only elementless models still render as warning placeholders.
