@@ -33,6 +33,34 @@ The tool writes:
 - `summary.json` with structured status/decision fields, actionable reasons, errors/warnings, unresolved texture references, suggested next steps, and an agent decision payload.
 - `preview.html` with a self-contained review report that summarizes diagnostics, model metadata, next steps, and an approval prompt for user sign-off.
 
+## Agent workflow for asset generation loops
+
+Use this loop when an agent is producing Minecraft model files:
+
+1. Generate or revise the model JSON asset.
+2. Run `npm run asset:preview -- <model.json> --out <dir>`.
+3. Read `<dir>/summary.json`.
+4. If `status` is `fail` (or `decision` is `revise_asset`), use blockers/reasons/suggested steps to revise the model and rerun.
+5. If `status` is `pass` or `pass_with_warnings` (decision `request_user_approval`), ask the user for approval and include warnings when present.
+6. Attach or link `<dir>/preview.html` in the user-facing response so the user can review the generated report.
+
+Example:
+
+```bash
+npm run asset:preview -- ./assets/generated/oak_table.json --out ./preview-output/oak-table
+cat ./preview-output/oak-table/summary.json
+```
+
+Decision handling example:
+
+- `fail`: revise asset before requesting approval.
+- `pass_with_warnings`: request approval, but explicitly mention warnings.
+- `pass`: request approval with the preview report.
+
+## Verification boundaries
+
+mcasset currently provides deterministic checks for JSON/model structure and texture-reference resolution diagnostics. It does not automatically judge subjective visual quality (style, aesthetics, or whether the asset "looks right" for the prompt) and should not be used to auto-approve assets without user review.
+
 ## Supported model features
 
 - `elements[].from` / `elements[].to` cuboids
