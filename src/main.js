@@ -2,13 +2,17 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import "./style.css";
 import {
+  createResourcePackIndex,
   createPreviewSummary,
   createStatusFeedback,
+  findModelPathForFilename,
   normalizeTexturePath,
   parseMinecraftModel,
+  resolveTextureReference,
   resolveUploadedTexture
 } from "./modelCore.js";
 
+const assetFolderInput = document.querySelector("#asset-folder");
 const modelInput = document.querySelector("#model-file");
 const textureInput = document.querySelector("#texture-files");
 const statusNode = document.querySelector("#status");
@@ -42,9 +46,45 @@ let modelGroup = new THREE.Group();
 scene.add(modelGroup);
 
 const textureLoader = new THREE.TextureLoader();
-const uploadedTextures = new Map();
+const folderTextures = new Map();
+const manualTextures = new Map();
+let resourcePackIndex = createResourcePackIndex();
+let folderContextSummary = "No folder loaded";
 let currentModelText = null;
 let currentFilename = null;
+let currentModelPath = null;
+
+assetFolderInput.addEventListener("change", async (event) => {
+  const files = [...(event.target.files ?? [])];
+  const entries = [];
+  folderTextures.clear();
+
+  for (const file of files) {
+    const path = file.webkitRelativePath || file.name;
+
+    if (/\.json$/i.test(file.name) && normalizeTexturePath(path).includes("/models/")) {
+      entries.push({ path, source: await file.text() });
+      continue;
+    }
+
+    if (/\.png$/i.test(file.name) && normalizeTexturePath(path).includes("/textures/")) {
+      const texture = await loadTextureFile(file);
+      folderTextures.set(normalizeTexturePath(path), texture);
+      entries.push({ path, texture });
+    }
+  }
+
+  resourcePackIndex = createResourcePackIndex(entries);
+  folderContextSummary = `${resourcePackIndex.models.size} models, ${resourcePackIndex.textures.size} textures`;
+
+  if (currentModelText) {
+    currentModelPath = findModelPathForFilename(currentFilename, resourcePackIndex) ?? currentModelPath;
+    renderCurrentModel();
+  } else {
+    statusNode.className = "status status-ok";
+    statusNode.textContent = `Loaded folder context: ${folderContextSummary}. Select a model JSON to preview.`;
+  }
+});
 
 modelInput.addEventListener("change", async (event) => {
   const file = event.target.files?.[0];
@@ -54,20 +94,15 @@ modelInput.addEventListener("change", async (event) => {
 
   currentModelText = await file.text();
   currentFilename = file.name;
+  currentModelPath = file.webkitRelativePath || findModelPathForFilename(file.name, resourcePackIndex) || file.name;
   renderCurrentModel();
 });
 
 textureInput.addEventListener("change", async (event) => {
-  uploadedTextures.clear();
+  manualTextures.clear();
 
   for (const file of event.target.files ?? []) {
-    const objectUrl = URL.createObjectURL(file);
-    const texture = await textureLoader.loadAsync(objectUrl);
-    texture.colorSpace = THREE.SRGBColorSpace;
-    texture.magFilter = THREE.NearestFilter;
-    texture.minFilter = THREE.NearestFilter;
-
-    uploadedTextures.set(normalizeTexturePath(file.webkitRelativePath || file.name), texture);
+    manualTextures.set(normalizeTexturePath(file.webkitRelativePath || file.name), await loadTextureFile(file));
   }
 
   if (currentModelText) {
@@ -76,7 +111,10 @@ textureInput.addEventListener("change", async (event) => {
 });
 
 function renderCurrentModel() {
-  const parsed = parseMinecraftModel(currentModelText, currentFilename);
+  const parsed = parseMinecraftModel(currentModelText, currentFilename, {
+    modelPath: currentModelPath,
+    resourcePackIndex
+  });
   const resolvedTextureReferences = collectResolvedTextureReferences(parsed);
   const summary = createPreviewSummary(parsed, resolvedTextureReferences);
 
@@ -127,7 +165,7 @@ function buildModelGroup(parsed) {
 
 function buildGeneratedItemGroup(parsed) {
   const group = new THREE.Group();
-  const texture = resolveUploadedTexture(parsed.textures.layer0, uploadedTextures);
+  const texture = resolveUploadedTexture(resolveTextureReference(parsed.textures.layer0, parsed.textures), textureIndex());
   const material = createSpriteMaterial(texture, 0x9ca3af, texture ? 1 : 0.28);
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(16, 16), material);
   mesh.name = "Generated item sprite";
@@ -144,7 +182,7 @@ function buildGeneratedItemGroup(parsed) {
 
 function buildParticlePlaceholderGroup(parsed) {
   const group = new THREE.Group();
-  const texture = resolveUploadedTexture(parsed.textures.particle, uploadedTextures);
+  const texture = resolveUploadedTexture(resolveTextureReference(parsed.textures.particle, parsed.textures), textureIndex());
   const geometry = new THREE.PlaneGeometry(12, 12);
   const mesh = new THREE.Mesh(geometry, createSpriteMaterial(texture, 0xf59e0b, texture ? 0.85 : 0.32));
   mesh.name = "Particle texture placeholder";
@@ -199,16 +237,15 @@ function resolveFaceTexture(face, textures) {
     return null;
   }
 
-  const key = face.texture.replace(/^#/, "");
-  const texturePath = textures[key] ?? face.texture;
-  return resolveUploadedTexture(texturePath, uploadedTextures);
+  const texturePath = resolveTextureReference(face.texture, textures);
+  return resolveUploadedTexture(texturePath, textureIndex());
 }
 
 function collectResolvedTextureReferences(parsed) {
   const resolved = new Set();
 
   for (const texturePath of parsed.textureReferences) {
-    if (resolveUploadedTexture(texturePath, uploadedTextures)) {
+    if (resolveUploadedTexture(texturePath, textureIndex())) {
       resolved.add(texturePath);
     }
   }
@@ -219,15 +256,27 @@ function collectResolvedTextureReferences(parsed) {
         continue;
       }
 
-      const key = face.texture.replace(/^#/, "");
-      const texturePath = parsed.textures[key] ?? face.texture;
-      if (resolveUploadedTexture(texturePath, uploadedTextures)) {
+      const texturePath = resolveTextureReference(face.texture, parsed.textures);
+      if (resolveUploadedTexture(texturePath, textureIndex())) {
         resolved.add(texturePath);
       }
     }
   }
 
   return resolved;
+}
+
+async function loadTextureFile(file) {
+  const objectUrl = URL.createObjectURL(file);
+  const texture = await textureLoader.loadAsync(objectUrl);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.magFilter = THREE.NearestFilter;
+  texture.minFilter = THREE.NearestFilter;
+  return texture;
+}
+
+function textureIndex() {
+  return new Map([...folderTextures, ...manualTextures]);
 }
 
 function fallbackColor(index, direction) {
@@ -261,6 +310,8 @@ function renderSummary(summary) {
     ["Preview mode", summary.modelKind],
     ["Elements", String(summary.elementCount)],
     ["Textures", String(summary.textureCount)],
+    ["Folder context", folderContextSummary],
+    ["Parent chain", summary.metadata.parentChain.join(" -> ") || "None"],
     ["Texture references", summary.textureReferences.join(", ") || "None"],
     ["Unresolved textures", summary.unresolvedTextureReferences.join(", ") || "None"],
     ["Errors", summary.errors.join(" | ") || "None"],

@@ -11,8 +11,13 @@
         <p class="eyebrow">Minecraft 3D Asset Preview</p>
         <h1>Preview generated Minecraft model assets before approval.</h1>
         <p class="intro">
-          Upload a Java Edition model JSON file, optionally add texture images, and inspect whether the generated asset is valid and visually close to the request.
+          Load a Java Edition assets/resource-pack folder, choose a model JSON file, and inspect whether the generated asset is valid and visually close to the request.
         </p>
+
+        <label class="dropzone">
+          <span>Minecraft assets/resource-pack folder</span>
+          <input id="asset-folder" type="file" webkitdirectory directory multiple />
+        </label>
 
         <label class="dropzone">
           <span>Model JSON</span>
@@ -20,7 +25,7 @@
         </label>
 
         <label class="dropzone">
-          <span>Texture images</span>
+          <span>Additional texture images</span>
           <input id="texture-files" type="file" accept="image/png,image/jpeg" multiple />
         </label>
 

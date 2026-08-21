@@ -1,9 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  createResourcePackIndex,
   createPreviewSummary,
   createStatusFeedback,
+  modelReferenceCandidates,
+  normalizeResourcePath,
   parseMinecraftModel,
+  resolveTextureReference,
   resolveUploadedTexture,
   textureCandidates
 } from "../src/modelCore.js";
@@ -20,6 +24,132 @@ test("resolves uploaded textures from common resource-pack path variants", () =>
   assert.equal(resolveUploadedTexture("textures/block/dirt", index), "b");
   assert.equal(resolveUploadedTexture("block/oak_planks", index), "c");
   assert.equal(resolveUploadedTexture("stone", index), "d");
+});
+
+test("resolves chained texture variables through inherited texture maps", () => {
+  assert.equal(
+    resolveTextureReference("#particle", { particle: "#all", all: "minecraft:block/stone" }),
+    "minecraft:block/stone"
+  );
+  assert.equal(resolveTextureReference("#missing", { all: "minecraft:block/stone" }), "#missing");
+});
+
+test("normalizes resource-pack paths from selected folders", () => {
+  assert.equal(
+    normalizeResourcePath("26.1.2/assets/minecraft/models/block/cube_all.json"),
+    "/assets/minecraft/models/block/cube_all.json"
+  );
+  assert.equal(
+    normalizeResourcePath("\\resource-pack\\assets\\minecraft\\textures\\block\\stone.png"),
+    "/assets/minecraft/textures/block/stone.png"
+  );
+});
+
+test("indexes model JSON and PNG texture files from resource-pack paths", () => {
+  const index = createResourcePackIndex([
+    { path: "pack/assets/minecraft/models/block/cube_all.json", source: "{}" },
+    { path: "pack/assets/minecraft/models/item/acacia_hanging_sign.json", source: "{}" },
+    { path: "pack/assets/minecraft/textures/block/stone.png", texture: "stone" },
+    { path: "pack/assets/minecraft/textures/item/acacia_hanging_sign.png", texture: "sign" },
+    { path: "pack/assets/minecraft/lang/en_us.json", source: "{}" }
+  ]);
+
+  assert.deepEqual([...index.models.keys()].sort(), [
+    "/assets/minecraft/models/block/cube_all.json",
+    "/assets/minecraft/models/item/acacia_hanging_sign.json"
+  ]);
+  assert.deepEqual([...index.textures.keys()].sort(), [
+    "/assets/minecraft/textures/block/stone.png",
+    "/assets/minecraft/textures/item/acacia_hanging_sign.png"
+  ]);
+});
+
+test("builds parent model path candidates for namespaced, shorthand, and relative ids", () => {
+  assert.deepEqual(modelReferenceCandidates("minecraft:block/cube_all"), [
+    "/assets/minecraft/models/block/cube_all.json"
+  ]);
+  assert.ok(modelReferenceCandidates("block/cube_all").includes("/assets/minecraft/models/block/cube_all.json"));
+  assert.ok(
+    modelReferenceCandidates("cube_all", "/assets/minecraft/models/block/stone.json").includes(
+      "/assets/minecraft/models/block/cube_all.json"
+    )
+  );
+});
+
+test("resolves parent models and inherits textures and elements", () => {
+  const resourcePackIndex = createResourcePackIndex([
+    {
+      path: "assets/minecraft/models/block/cube_all.json",
+      source: JSON.stringify({
+        textures: { all: "minecraft:block/template_stone", particle: "#all" },
+        elements: [
+          {
+            from: [0, 0, 0],
+            to: [16, 16, 16],
+            faces: {
+              north: { texture: "#all" },
+              south: { texture: "#all" }
+            }
+          }
+        ]
+      })
+    }
+  ]);
+
+  const parsed = parseMinecraftModel(
+    JSON.stringify({
+      parent: "minecraft:block/cube_all",
+      textures: { all: "minecraft:block/stone" }
+    }),
+    "stone.json",
+    { modelPath: "/assets/minecraft/models/block/stone.json", resourcePackIndex }
+  );
+
+  assert.equal(parsed.ok, true);
+  assert.deepEqual(parsed.parentChain, ["/assets/minecraft/models/block/cube_all.json"]);
+  assert.equal(parsed.elements.length, 1);
+  assert.deepEqual(parsed.textures, { all: "minecraft:block/stone", particle: "#all" });
+  assert.deepEqual(parsed.textureReferences, ["minecraft:block/stone"]);
+});
+
+test("warns when a parent model cannot be resolved from folder context", () => {
+  const parsed = parseMinecraftModel(
+    JSON.stringify({
+      parent: "minecraft:block/missing_template",
+      textures: { all: "minecraft:block/stone" }
+    }),
+    "stone.json",
+    {
+      modelPath: "/assets/minecraft/models/block/stone.json",
+      resourcePackIndex: createResourcePackIndex([])
+    }
+  );
+
+  assert.equal(parsed.ok, false);
+  assert.ok(parsed.warnings.some((warning) => warning.includes("Parent model could not be resolved")));
+  assert.ok(parsed.errors.some((error) => error.includes("elements")));
+});
+
+test("reports parent model cycles as validation errors", () => {
+  const resourcePackIndex = createResourcePackIndex([
+    {
+      path: "assets/minecraft/models/block/a.json",
+      source: JSON.stringify({ parent: "minecraft:block/b", textures: { all: "block/stone" } })
+    },
+    {
+      path: "assets/minecraft/models/block/b.json",
+      source: JSON.stringify({ parent: "minecraft:block/a" })
+    }
+  ]);
+
+  const parsed = parseMinecraftModel(
+    JSON.stringify({ parent: "minecraft:block/b" }),
+    "a.json",
+    { modelPath: "/assets/minecraft/models/block/a.json", resourcePackIndex }
+  );
+
+  assert.equal(parsed.ok, false);
+  assert.ok(parsed.errors.some((error) => error.includes("Parent model cycle detected")));
 });
 
 test("includes unresolved texture references in preview summary diagnostics", () => {
@@ -165,6 +295,13 @@ test("resolves generated item texture path candidates from common upload layouts
   for (const candidate of expectedCandidates.slice(1)) {
     assert.equal(resolveUploadedTexture("minecraft:item/acacia_hanging_sign", new Map([[candidate, candidate]])), candidate);
   }
+});
+
+test("resolves namespaced texture candidates from loaded resource-pack folders", () => {
+  const texture = "modded";
+  const index = new Map([["/assets/example/textures/block/copper_panel.png", texture]]);
+
+  assert.equal(resolveUploadedTexture("example:block/copper_panel", index), texture);
 });
 
 test("uses a particle placeholder warning for elementless particle-only models", () => {
