@@ -30,8 +30,8 @@ npm run asset:preview -- ./path/to/model.json --out ./preview-output
 
 The tool writes:
 
-- `summary.json` with validation status, warnings, element counts, and texture references.
-- `preview.html` with a human-readable report that can be attached to an agent run or linked from a workflow.
+- `summary.json` with structured status/decision fields, actionable reasons, errors/warnings, unresolved texture references, suggested next steps, and an agent decision payload.
+- `preview.html` with a self-contained review report that summarizes diagnostics, model metadata, next steps, and an approval prompt for user sign-off.
 
 ## Supported model features
 

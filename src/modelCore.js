@@ -42,16 +42,49 @@ export function parseMinecraftModel(source, filename = "model.json") {
 
 export function createPreviewSummary(parsed, resolvedTextureReferences = new Set()) {
   const unresolvedTextureReferences = [...parsed.textureReferences].filter((reference) => !resolvedTextureReferences.has(reference));
+  const blockers = [
+    ...parsed.errors.map((message) => ({ code: "validation-error", message })),
+    ...unresolvedTextureReferences.map((reference) => ({
+      code: "unresolved-texture-reference",
+      message: `Texture reference could not be resolved: ${reference}`,
+      reference
+    }))
+  ];
+  const hasBlockers = blockers.length > 0;
+  const reasons = hasBlockers
+    ? blockers.map((item) => item.message)
+    : parsed.warnings.length > 0
+      ? ["Validation passed with warnings."]
+      : ["Validation passed without issues."];
+  const suggestedNextSteps = hasBlockers
+    ? buildRevisionSteps(parsed, unresolvedTextureReferences)
+    : buildApprovalSteps(parsed);
 
   return {
     ok: parsed.ok,
+    status: hasBlockers ? "fail" : parsed.warnings.length > 0 ? "pass_with_warnings" : "pass",
+    decision: hasBlockers ? "revise_asset" : "request_user_approval",
     filename: parsed.filename,
     elementCount: parsed.elements.length,
     textureCount: Object.keys(parsed.textures).length,
     textureReferences: parsed.textureReferences,
     unresolvedTextureReferences,
     errors: parsed.errors,
-    warnings: parsed.warnings
+    warnings: parsed.warnings,
+    reasons,
+    blockers,
+    suggestedNextSteps,
+    agentGuidance: {
+      recommendedAction: hasBlockers ? "revise_asset" : "request_user_approval",
+      confidence: "high",
+      rationale: reasons
+    },
+    metadata: {
+      hasElements: parsed.elements.length > 0,
+      hasWarnings: parsed.warnings.length > 0,
+      hasErrors: parsed.errors.length > 0,
+      hasUnresolvedTextures: unresolvedTextureReferences.length > 0
+    }
   };
 }
 
@@ -230,4 +263,26 @@ function collectTextureReferences(elements, textures) {
   }
 
   return [...references].sort();
+}
+
+function buildRevisionSteps(parsed, unresolvedTextureReferences) {
+  const steps = [];
+  if (parsed.errors.length > 0) {
+    steps.push("Fix all validation errors in the model JSON before requesting approval.");
+  }
+  if (unresolvedTextureReferences.length > 0) {
+    steps.push("Provide texture files for unresolved references or update model texture mappings.");
+  }
+  if (parsed.elements.length === 0) {
+    steps.push("Add at least one valid element cuboid to the model.");
+  }
+  return steps;
+}
+
+function buildApprovalSteps(parsed) {
+  const steps = ["Share preview.html with the user and ask whether the preview matches the requested asset."];
+  if (parsed.warnings.length > 0) {
+    steps.push("Include the warnings in your message so the user can decide whether they are acceptable.");
+  }
+  return steps;
 }

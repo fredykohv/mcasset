@@ -27,11 +27,13 @@ process.exit(summary.ok ? 0 : 1);
 
 function renderReport(summary) {
   const rows = [
-    ["Status", summary.ok ? "Valid" : "Invalid"],
+    ["Status", summary.status],
+    ["Decision", summary.decision],
     ["File", summary.filename],
     ["Elements", summary.elementCount],
     ["Textures", summary.textureCount],
     ["Texture references", summary.textureReferences.join(", ") || "None"],
+    ["Unresolved texture references", summary.unresolvedTextureReferences.join(", ") || "None"],
     ["Errors", summary.errors.join(" | ") || "None"],
     ["Warnings", summary.warnings.join(" | ") || "None"]
   ];
@@ -48,19 +50,39 @@ function renderReport(summary) {
       table { width: 100%; border-collapse: collapse; background: #111a26; border-radius: 16px; overflow: hidden; }
       th, td { padding: 14px 16px; border-bottom: 1px solid #243244; text-align: left; vertical-align: top; }
       th { width: 220px; color: #8aa0b2; }
-      .valid { color: #86efac; }
-      .invalid { color: #fca5a5; }
+      .status-pass { color: #86efac; }
+      .status-pass_with_warnings { color: #fcd34d; }
+      .status-fail { color: #fca5a5; }
+      pre { background: #111a26; padding: 16px; border-radius: 12px; overflow: auto; border: 1px solid #243244; }
+      .section { margin-top: 24px; }
+      .approval { margin-top: 24px; padding: 16px; border-radius: 12px; background: #111a26; border: 1px solid #243244; }
     </style>
   </head>
   <body>
     <main>
       <h1>Minecraft asset preview report</h1>
-      <p class="${summary.ok ? "valid" : "invalid"}">${summary.ok ? "The model passed validation." : "The model has validation errors."}</p>
+      <p class="status-${summary.status}">${summary.status === "fail" ? "The model failed deterministic checks." : summary.status === "pass_with_warnings" ? "The model passed checks with warnings." : "The model passed deterministic checks."}</p>
       <table>
         <tbody>
           ${rows.map(([label, value]) => `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(String(value))}</td></tr>`).join("\n")}
         </tbody>
       </table>
+      <section class="section">
+        <h2>Actionable reasons</h2>
+        <ul>${summary.reasons.map((reason) => `<li>${escapeHtml(reason)}</li>`).join("\n")}</ul>
+      </section>
+      <section class="section">
+        <h2>Suggested next steps</h2>
+        <ol>${summary.suggestedNextSteps.map((step) => `<li>${escapeHtml(step)}</li>`).join("\n")}</ol>
+      </section>
+      <section class="approval">
+        <h2>Approval prompt</h2>
+        <p>Does this preview fit the requested Minecraft asset well enough to approve, or should the asset be revised?</p>
+      </section>
+      <section class="section">
+        <h2>Agent decision payload</h2>
+        <pre>${escapeHtml(JSON.stringify(summary.agentGuidance, null, 2))}</pre>
+      </section>
     </main>
   </body>
 </html>
