@@ -5,13 +5,15 @@ This document defines the recommended agent loop for generated Minecraft model a
 ## Loop
 
 1. Generate a model JSON asset.
-2. Run:
+2. Run the CLI or call the equivalent MCP tool:
 
 ```bash
 npm run asset:preview -- <model.json> --out <output-dir>
 ```
 
-3. Read `<output-dir>/summary.json`.
+Or, for MCP-capable agent clients (e.g. GitHub Copilot Desktop) with the mcasset MCP server registered (`npm run mcp`), call the `preview_minecraft_asset` tool with `modelPath`/`outDir` (and optional `assetsRoot`) instead of shelling out. See the README's "MCP server" section and `mcp/mcp.example.json` for setup.
+
+3. Read `<output-dir>/summary.json` (CLI) or the tool result payload (MCP) — both share the same structured fields.
 4. Use decision fields:
    - `status: fail` or `decision: revise_asset` -> revise the model and rerun.
    - `status: pass` or `status: pass_with_warnings` with `decision: request_user_approval` -> ask the user to approve.

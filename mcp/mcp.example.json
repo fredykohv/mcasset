@@ -1,0 +1,10 @@
+{
+  "//": "Example configuration for registering the local mcasset MCP server with an MCP-capable agent client (e.g. GitHub Copilot Desktop). The exact settings file/UI location for registering MCP servers varies by app and version — consult your client's MCP server documentation for where to add this. Update <absolute-path-to-mcasset> to the absolute path of this repository checkout.",
+  "mcpServers": {
+    "mcasset": {
+      "command": "node",
+      "args": ["mcp/server.mjs"],
+      "cwd": "<absolute-path-to-mcasset>"
+    }
+  }
+}
