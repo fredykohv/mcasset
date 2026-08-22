@@ -43,6 +43,39 @@
 
         <div id="status" class="status">Load a model JSON file to begin.</div>
         <dl id="summary" class="summary"></dl>
+
+        <section id="review-panel" class="review-panel" hidden>
+          <h2>Human review</h2>
+          <p id="review-status" class="review-status"></p>
+          <label class="review-feedback-label" for="review-feedback">
+            Feedback (required when requesting changes)
+          </label>
+          <textarea
+            id="review-feedback"
+            class="review-feedback"
+            rows="4"
+            placeholder="Describe what should change, e.g. texture is upside down, proportions are off..."
+          ></textarea>
+          <div class="review-actions">
+            <button id="review-accept" type="button" class="review-button review-button-accept">
+              Accept asset
+            </button>
+            <button id="review-request-changes" type="button" class="review-button review-button-changes">
+              Request changes
+            </button>
+          </div>
+          <p id="review-error" class="review-error" hidden></p>
+          <div id="review-result" class="review-result" hidden>
+            <div class="review-result-header">
+              <span id="review-result-label"></span>
+              <div class="review-result-buttons">
+                <button id="review-copy" type="button" class="review-button-small">Copy JSON</button>
+                <button id="review-download" type="button" class="review-button-small">Download JSON</button>
+              </div>
+            </div>
+            <pre id="review-result-json" class="review-result-json"></pre>
+          </div>
+        </section>
       </section>
 
       <section class="viewer-card">

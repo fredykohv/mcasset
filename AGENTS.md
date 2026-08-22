@@ -15,6 +15,7 @@ Build a Minecraft asset preview website and an agent-usable feedback tool. The p
 - When a model basename exists under both `models/item` and `models/block`, show the category and full path for each result and a hint clarifying that item models are inventory/icon previews while block models with the same name may need special block-entity rendering.
 - Accept optional texture image uploads and map them to model texture references by basename or resource-pack path.
 - Provide an agent-facing command that validates an asset and writes machine-readable feedback.
+- Provide a browser "Human review" panel (Accept asset / Request changes + feedback textarea) that captures the user's decision as a structured, exportable JSON payload for an agent to consume; see `src/reviewFeedback.js` and the README's "Human-in-the-loop review" section.
 
 ## Engineering guidelines
 
@@ -55,6 +56,16 @@ Interpretation rules:
 - Treat `summary.json` as deterministic structural/texture diagnostics with actionable blockers, reasons, and suggested steps.
 - Do not claim automatic approval based on subjective visual quality; this tool does not judge style, artistic quality, or semantic fit with a prompt.
 - Always surface warnings when status is `pass_with_warnings` so the user can decide if they are acceptable.
+
+## Human review payload (browser previewer)
+
+The browser previewer's "Human review" panel produces a structured JSON payload once a user clicks Accept asset or Request changes (`src/reviewFeedback.js`). When you receive this payload from a user (pasted, copied, or as an uploaded file):
+
+1. Read `action` — `"approved"` or `"changes_requested"`.
+2. If `"changes_requested"`, treat `userFeedback` as required revision instructions and revise the asset accordingly (feedback text is guaranteed non-empty for this action).
+3. Use `validation.status`/`validation.decision` to see the deterministic check result at review time; a human can still request changes even when validation passed (e.g. for visual/subjective reasons).
+4. Confirm `model.filename`/`model.modelPath` and `timestamp` match the asset revision under discussion.
+5. This workflow has no backend/account/database: the payload is only ever produced and shared client-side by the user.
 
 ## Definitions
 
