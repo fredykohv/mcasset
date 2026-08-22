@@ -39,6 +39,34 @@ The tool writes:
 - `summary.json` with structured status/decision fields, actionable reasons, errors/warnings, unresolved texture references, suggested next steps, and an agent decision payload.
 - `preview.html` with a self-contained review report that summarizes diagnostics, model metadata, next steps, and an approval prompt for user sign-off.
 
+## MCP server (Copilot Desktop / MCP-capable agent clients)
+
+For agent clients that integrate over the Model Context Protocol (e.g. GitHub Copilot Desktop), mcasset ships a local stdio MCP server that exposes the same validation/preview logic as programmatic tools, instead of requiring the agent to shell out to `npm run asset:preview`.
+
+Start it directly with:
+
+```bash
+npm run mcp
+```
+
+This runs `mcp/server.mjs`, which speaks MCP over stdio and exposes two tools:
+
+- `validate_minecraft_asset` — validates a model JSON file at an explicit `modelPath` (optionally resolving `parent` models/textures against an explicit `assetsRoot`) and returns the structured diagnostic summary described above. Writes no files.
+- `preview_minecraft_asset` — same validation, plus writes `summary.json`/`preview.html` to an explicit `outDir` and returns their absolute paths alongside the summary.
+
+Both tools require explicit paths from the caller; the server never scans arbitrary home/root directories, never shells out, and never executes model file contents.
+
+To register the server with an MCP-capable client, see `mcp/mcp.example.json` for an example `mcpServers` entry. The exact settings file or UI location for registering MCP servers varies by app and version — consult your client's MCP documentation for where to add it.
+
+Example agent workflow over MCP:
+
+1. Agent calls `preview_minecraft_asset` with `modelPath` (and `assetsRoot` if parent/texture resolution is needed) and an `outDir`.
+2. Agent reads the returned `status`/`decision`/`blockers`/`suggestedNextSteps` fields directly from the tool result (no file parsing required).
+3. If `status` is `fail`, the agent revises the model and calls the tool again.
+4. If `status` is `pass` or `pass_with_warnings`, the agent shares the returned `artifacts.previewPath` with the user (or opens the website) for human visual approval.
+
+The MCP tools and the browser previewer serve different purposes: the MCP tools give an agent fast, structured, non-visual diagnostics it can act on programmatically, while the browser website remains the human-facing visual review surface for the actual 3D preview.
+
 ## Agent workflow for asset generation loops
 
 Use this loop when an agent is producing Minecraft model files:
