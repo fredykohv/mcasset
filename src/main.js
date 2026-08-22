@@ -11,7 +11,13 @@ import {
   resolveTextureReference,
   resolveUploadedTexture
 } from "./modelCore.js";
-import { alphaMaskFromImageData, buildGeneratedItemExtrusion } from "./generatedItemExtrusion.js";
+import {
+  alphaMaskFromImageData,
+  buildGeneratedItemExtrusion,
+  horizontalEdgeUv,
+  rectUv,
+  verticalEdgeUv
+} from "./generatedItemExtrusion.js";
 
 const assetFolderInput = document.querySelector("#asset-folder");
 const modelInput = document.querySelector("#model-file");
@@ -205,52 +211,71 @@ function buildGeneratedItemGroup(parsed) {
     const centerX = (rect.x + rect.width / 2) * pixelWidth - 8;
     const centerY = 8 - (rect.y + rect.height / 2) * pixelHeight;
 
-    const front = new THREE.Mesh(new THREE.PlaneGeometry(width, height), frontBackMaterial);
+    const frontGeometry = new THREE.PlaneGeometry(width, height);
+    setPlaneUv(frontGeometry, rectUv(rect, imageData.width, imageData.height));
+    const front = new THREE.Mesh(frontGeometry, frontBackMaterial);
     front.position.set(centerX, centerY, halfDepth);
     group.add(front);
 
-    const back = new THREE.Mesh(new THREE.PlaneGeometry(width, height), frontBackMaterial);
+    const backGeometry = new THREE.PlaneGeometry(width, height);
+    setPlaneUv(backGeometry, rectUv(rect, imageData.width, imageData.height));
+    const back = new THREE.Mesh(backGeometry, frontBackMaterial);
     back.position.set(centerX, centerY, -halfDepth);
     back.rotation.y = Math.PI;
     group.add(back);
   }
 
   for (const edge of extrusion.sideRects.north) {
-    addHorizontalSide(group, edge, pixelWidth, pixelHeight, halfDepth, imageData.height, -1, sideMaterial);
+    addHorizontalSide(group, edge, pixelWidth, pixelHeight, halfDepth, imageData.width, imageData.height, -1, sideMaterial);
   }
   for (const edge of extrusion.sideRects.south) {
-    addHorizontalSide(group, edge, pixelWidth, pixelHeight, halfDepth, imageData.height, 1, sideMaterial);
+    addHorizontalSide(group, edge, pixelWidth, pixelHeight, halfDepth, imageData.width, imageData.height, 1, sideMaterial);
   }
   for (const edge of extrusion.sideRects.west) {
-    addVerticalSide(group, edge, pixelWidth, pixelHeight, halfDepth, imageData.width, -1, sideMaterial);
+    addVerticalSide(group, edge, pixelWidth, pixelHeight, halfDepth, imageData.width, imageData.height, -1, sideMaterial);
   }
   for (const edge of extrusion.sideRects.east) {
-    addVerticalSide(group, edge, pixelWidth, pixelHeight, halfDepth, imageData.width, 1, sideMaterial);
+    addVerticalSide(group, edge, pixelWidth, pixelHeight, halfDepth, imageData.width, imageData.height, 1, sideMaterial);
   }
 
   return group;
 }
 
-function addHorizontalSide(group, edge, pixelWidth, pixelHeight, halfDepth, imageHeight, direction, material) {
+function addHorizontalSide(group, edge, pixelWidth, pixelHeight, halfDepth, imageWidth, imageHeight, direction, material) {
   const width = edge.length * pixelWidth;
   const centerX = (edge.x + edge.length / 2) * pixelWidth - 8;
   const y = 8 - edge.y * pixelHeight;
   const z = direction < 0 ? -halfDepth : halfDepth;
-  const side = new THREE.Mesh(new THREE.PlaneGeometry(width, halfDepth * 2), material);
+  const geometry = new THREE.PlaneGeometry(width, halfDepth * 2);
+  const sampledY = direction < 0 ? edge.y : edge.y + 1;
+  setPlaneUv(geometry, horizontalEdgeUv(edge, imageWidth, imageHeight, sampledY));
+  const side = new THREE.Mesh(geometry, material);
   side.position.set(centerX, y, z);
   side.rotation.x = direction < 0 ? Math.PI / 2 : -Math.PI / 2;
   group.add(side);
 }
 
-function addVerticalSide(group, edge, pixelWidth, pixelHeight, halfDepth, imageWidth, direction, material) {
+function addVerticalSide(group, edge, pixelWidth, pixelHeight, halfDepth, imageWidth, imageHeight, direction, material) {
   const height = edge.length * pixelHeight;
   const x = edge.x * pixelWidth - 8;
   const centerY = 8 - (edge.y + edge.length / 2) * pixelHeight;
   const z = direction < 0 ? -halfDepth : halfDepth;
-  const side = new THREE.Mesh(new THREE.PlaneGeometry(halfDepth * 2, height), material);
+  const geometry = new THREE.PlaneGeometry(halfDepth * 2, height);
+  const sampledX = direction < 0 ? edge.x : edge.x + 1;
+  setPlaneUv(geometry, verticalEdgeUv(edge, imageWidth, imageHeight, sampledX));
+  const side = new THREE.Mesh(geometry, material);
   side.position.set(x, centerY, z);
   side.rotation.y = direction < 0 ? Math.PI / 2 : -Math.PI / 2;
   group.add(side);
+}
+
+function setPlaneUv(geometry, [u0, v0, u1, v1]) {
+  geometry.setAttribute("uv", new THREE.Float32BufferAttribute([
+    u0, v1,
+    u1, v1,
+    u0, v0,
+    u1, v0
+  ], 2));
 }
 
 function readTextureImageData(image) {
