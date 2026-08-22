@@ -68,7 +68,7 @@ mcasset currently provides deterministic checks for JSON/model structure and tex
 ## Supported model features
 
 - `elements[].from` / `elements[].to` cuboids
-- Elementless generated item sprites for `minecraft:item/generated`, `item/generated`, and `builtin/generated` models with `textures.layer0`
+- Elementless generated item sprite extrusion for `minecraft:item/generated`, `item/generated`, and `builtin/generated` models with `textures.layer0`
 - Elementless particle-only placeholder previews for special block models with `textures.particle`
 - Parent/template lookup from a loaded assets/resource-pack folder
 - Inherited parent textures and parent `elements` when the child has none
@@ -78,4 +78,6 @@ mcasset currently provides deterministic checks for JSON/model structure and tex
 
 Uploaded item textures can be matched by basename or common resource-pack paths such as `item/name.png`, `textures/item/name.png`, and `assets/minecraft/textures/item/name.png`.
 
-Advanced Minecraft features such as generated item pixel extrusion/thickness, block-entity and special-renderer emulation, display transforms, rotations, tinting, UV remapping, and full Minecraft rendering-engine parity are intentionally left for future iterations.
+Generated item previews now approximate thickness by extruding opaque texture pixels from `layer0` alpha, but this remains a preview approximation and not exact Minecraft item renderer parity (display transforms, lighting behavior, and other renderer details still differ).
+
+Advanced Minecraft features such as block-entity and special-renderer emulation, display transforms, rotations, tinting, UV remapping, and full Minecraft rendering-engine parity are intentionally left for future iterations.
