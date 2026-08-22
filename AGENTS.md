@@ -12,6 +12,7 @@ Build a Minecraft asset preview website and an agent-usable feedback tool. The p
 - Show a warning placeholder for elementless particle-only block models; block-entity and special-renderer fidelity remains backlog.
 - Accept a loaded Minecraft `assets` folder or resource-pack folder as browser context for parent/template model and texture resolution.
 - After a folder is loaded, provide an in-browser searchable model list so a user can select an indexed model without reopening the filesystem picker.
+- When a model basename exists under both `models/item` and `models/block`, show the category and full path for each result and a hint clarifying that item models are inventory/icon previews while block models with the same name may need special block-entity rendering.
 - Accept optional texture image uploads and map them to model texture references by basename or resource-pack path.
 - Provide an agent-facing command that validates an asset and writes machine-readable feedback.
 

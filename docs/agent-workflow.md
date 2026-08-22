@@ -49,4 +49,4 @@ Use deterministic diagnostics to guide revisions, and keep human approval as the
 4. The previewer resolves parent/template models and textures from the loaded folder when possible.
 5. Upload additional PNG textures only when testing loose files or overrides.
 
-Block entity and special renderer fidelity remains backlog; particle-only elementless models still render as warning placeholders.
+Block entity and special renderer fidelity remains backlog; particle-only elementless models still render as warning placeholders. When a basename appears under both `models/item` and `models/block` (e.g. `acacia_hanging_sign`), pick the `item` result to preview the inventory/icon model; the `block` result is particle-only and only gets an approximate placeholder here.
