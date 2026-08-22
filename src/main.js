@@ -6,8 +6,11 @@ import {
   createPreviewSummary,
   createStatusFeedback,
   filterModelPaths,
+  findAmbiguousModelBaseNames,
   findModelPathForFilename,
   listIndexedModelPaths,
+  modelBaseName,
+  modelCategory,
   modelDisplayName,
   normalizeTexturePath,
   parseMinecraftModel,
@@ -71,6 +74,7 @@ let currentFilename = null;
 let currentModelPath = null;
 let indexedModelPaths = [];
 let selectedModelPath = null;
+let ambiguousModelBaseNames = new Set();
 
 assetFolderInput.addEventListener("change", async (event) => {
   const files = [...(event.target.files ?? [])];
@@ -95,6 +99,7 @@ assetFolderInput.addEventListener("change", async (event) => {
   resourcePackIndex = createResourcePackIndex(entries);
   folderContextSummary = `${resourcePackIndex.models.size} models, ${resourcePackIndex.textures.size} textures`;
   indexedModelPaths = listIndexedModelPaths(resourcePackIndex);
+  ambiguousModelBaseNames = findAmbiguousModelBaseNames(indexedModelPaths);
   modelSearchInput.value = "";
   renderModelList("");
 
@@ -196,7 +201,33 @@ function renderModelList(query) {
         button.classList.add("model-list-item-selected");
         button.setAttribute("aria-selected", "true");
       }
-      button.textContent = path;
+
+      const category = modelCategory(path);
+      const baseName = modelBaseName(path);
+      const isAmbiguous = ambiguousModelBaseNames.has(baseName);
+
+      const title = document.createElement("span");
+      title.className = "model-list-item-title";
+      title.textContent = category ? `${category} / ${baseName}` : modelDisplayName(path);
+      button.appendChild(title);
+
+      const pathLine = document.createElement("span");
+      pathLine.className = "model-list-item-path";
+      pathLine.textContent = path;
+      button.appendChild(pathLine);
+
+      if (isAmbiguous) {
+        const hint = document.createElement("span");
+        hint.className = "model-list-item-hint";
+        hint.textContent =
+          category === "item"
+            ? "Also exists under models/block: item models are for inventory/icon previews."
+            : category === "block"
+              ? "Also exists under models/item: block models may need special block-entity rendering."
+              : "This name exists in multiple model categories.";
+        button.appendChild(hint);
+      }
+
       return button;
     })
   );

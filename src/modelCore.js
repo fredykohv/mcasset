@@ -44,8 +44,9 @@ export function parseMinecraftModel(source, filename = "model.json", options = {
   }
 
   if (modelKind === "particle_placeholder") {
+    const label = modelCategoryLabel(options.modelPath ?? filename);
     warnings.push(
-      "Elementless model uses textures.particle only; rendering a placeholder because block-entity/special-renderer fidelity is not yet supported."
+      `You selected ${label}, a particle-only model (textures.particle with no elements). This is typically a block model that relies on a block-entity or special renderer in-game, so this preview shows an approximate placeholder instead of the real block appearance. The JSON itself is not invalid; if you intended to preview an inventory icon, look for a matching model under models/item instead.`
     );
   }
 
@@ -369,6 +370,60 @@ export function modelDisplayName(modelPath) {
   }
 
   return modelPath.split("/").pop();
+}
+
+// Matches "/assets/<namespace>/models/<category>/<...id>.json" and pulls out the
+// category (e.g. "item", "block") and the model id without the .json suffix.
+const MODEL_PATH_PATTERN = /^\/assets\/([^/]+)\/models\/([^/]+)\/(.+)\.json$/i;
+
+export function modelCategory(modelPath) {
+  const match = normalizeResourcePath(modelPath).match(MODEL_PATH_PATTERN);
+  return match?.[2] ?? null;
+}
+
+export function modelBaseName(modelPath) {
+  const match = normalizeResourcePath(modelPath).match(MODEL_PATH_PATTERN);
+  if (!match) {
+    return modelDisplayName(modelPath).replace(/\.json$/i, "");
+  }
+
+  return match[3].split("/").pop();
+}
+
+// A short "category / name" label, e.g. "item / acacia_hanging_sign", used
+// anywhere a model needs to be identified unambiguously by category and name.
+export function modelCategoryLabel(modelPath) {
+  const category = modelCategory(modelPath);
+  const baseName = modelBaseName(modelPath);
+
+  if (!category) {
+    return baseName || modelDisplayName(modelPath) || "this model";
+  }
+
+  return `${category} / ${baseName}`;
+}
+
+// Groups indexed model paths by basename so the UI can flag basenames that
+// exist in more than one category (e.g. both models/item and models/block).
+export function findAmbiguousModelBaseNames(modelPaths) {
+  const byBaseName = new Map();
+
+  for (const path of modelPaths ?? []) {
+    const baseName = modelBaseName(path);
+    if (!byBaseName.has(baseName)) {
+      byBaseName.set(baseName, new Set());
+    }
+    byBaseName.get(baseName).add(modelCategory(path) ?? "unknown");
+  }
+
+  const ambiguous = new Set();
+  for (const [baseName, categories] of byBaseName) {
+    if (categories.size > 1) {
+      ambiguous.add(baseName);
+    }
+  }
+
+  return ambiguous;
 }
 
 function modelIdToPath(namespace, id) {

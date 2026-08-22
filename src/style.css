@@ -105,7 +105,8 @@ input {
 }
 
 .model-list-item {
-  display: block;
+  display: grid;
+  gap: 2px;
   width: 100%;
   padding: 8px 10px;
   border: 1px solid transparent;
@@ -117,6 +118,21 @@ input {
   text-align: left;
   cursor: pointer;
   overflow-wrap: anywhere;
+}
+
+.model-list-item-title {
+  color: #e5eef7;
+  font-weight: 600;
+}
+
+.model-list-item-path {
+  color: #7f93a8;
+  font-size: 0.74rem;
+}
+
+.model-list-item-hint {
+  color: #e0b84f;
+  font-size: 0.74rem;
 }
 
 .model-list-item:hover {

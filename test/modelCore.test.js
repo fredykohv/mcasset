@@ -5,7 +5,11 @@ import {
   createPreviewSummary,
   createStatusFeedback,
   filterModelPaths,
+  findAmbiguousModelBaseNames,
   listIndexedModelPaths,
+  modelBaseName,
+  modelCategory,
+  modelCategoryLabel,
   modelDisplayName,
   modelReferenceCandidates,
   normalizeResourcePath,
@@ -391,4 +395,51 @@ test("derives a display name from a model path", () => {
   assert.equal(modelDisplayName("cube_all.json"), "cube_all.json");
   assert.equal(modelDisplayName(""), "");
   assert.equal(modelDisplayName(null), "");
+});
+
+test("derives category and base name from indexed model paths", () => {
+  assert.equal(modelCategory("/assets/minecraft/models/item/acacia_hanging_sign.json"), "item");
+  assert.equal(modelCategory("/assets/minecraft/models/block/acacia_hanging_sign.json"), "block");
+  assert.equal(modelCategory("not-a-model-path.json"), null);
+
+  assert.equal(modelBaseName("/assets/minecraft/models/item/acacia_hanging_sign.json"), "acacia_hanging_sign");
+  assert.equal(modelBaseName("/assets/minecraft/models/block/nested/anvil.json"), "anvil");
+  assert.equal(modelBaseName("plain.json"), "plain");
+});
+
+test("builds a category / name label for a model path", () => {
+  assert.equal(modelCategoryLabel("/assets/minecraft/models/item/acacia_hanging_sign.json"), "item / acacia_hanging_sign");
+  assert.equal(modelCategoryLabel("/assets/minecraft/models/block/acacia_hanging_sign.json"), "block / acacia_hanging_sign");
+  assert.equal(modelCategoryLabel("plain.json"), "plain");
+});
+
+test("flags base names that collide across model categories", () => {
+  const paths = [
+    "/assets/minecraft/models/item/acacia_hanging_sign.json",
+    "/assets/minecraft/models/block/acacia_hanging_sign.json",
+    "/assets/minecraft/models/block/cube_all.json"
+  ];
+
+  const ambiguous = findAmbiguousModelBaseNames(paths);
+  assert.equal(ambiguous.has("acacia_hanging_sign"), true);
+  assert.equal(ambiguous.has("cube_all"), false);
+});
+
+test("does not flag ambiguity when there are no indexed model paths", () => {
+  assert.deepEqual([...findAmbiguousModelBaseNames([])], []);
+  assert.deepEqual([...findAmbiguousModelBaseNames(undefined)], []);
+});
+
+test("names the selected model by category in the particle-only placeholder warning", () => {
+  const parsed = parseMinecraftModel(
+    JSON.stringify({
+      textures: { particle: "minecraft:block/acacia_hanging_sign" }
+    }),
+    "acacia_hanging_sign.json",
+    { modelPath: "/assets/minecraft/models/block/acacia_hanging_sign.json" }
+  );
+
+  assert.equal(parsed.modelKind, "particle_placeholder");
+  assert.ok(parsed.warnings.some((warning) => warning.includes("block / acacia_hanging_sign")));
+  assert.ok(parsed.warnings.some((warning) => warning.toLowerCase().includes("not invalid")));
 });
