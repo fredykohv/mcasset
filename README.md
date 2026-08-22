@@ -91,7 +91,37 @@ Decision handling example:
 - `pass_with_warnings`: request approval, but explicitly mention warnings.
 - `pass`: request approval with the preview report.
 
-## Verification boundaries
+## Human-in-the-loop review
+
+Once a model preview loads (from the folder browser or manual upload), a **Human review** panel appears below the summary. It lets a user:
+
+- **Accept asset** — records an approval decision immediately (feedback text is optional).
+- **Request changes** — requires feedback text describing what should change before it will record a revision request.
+
+Every decision is captured as a structured JSON payload (not just visible UI text) containing:
+
+```json
+{
+  "action": "approved",
+  "userFeedback": "Looks great",
+  "model": { "filename": "oak_table.json", "modelPath": "minecraft/models/item/oak_table.json" },
+  "validation": { "status": "pass", "decision": "request_user_approval", "errors": [], "warnings": [], "unresolvedTextureReferences": [] },
+  "timestamp": "2024-01-01T00:00:00.000Z"
+}
+```
+
+The panel shows the JSON payload with **Copy JSON** and **Download JSON** buttons so a user can hand it to an agent without any backend, account, or database — everything stays client-side in the browser.
+
+Loading a different model (via the model browser, manual upload, or a newly loaded folder resolving the current file) clears the prior decision and feedback text, so a stale approval can never be mistaken for approval of a different model.
+
+### How an agent should consume the exported payload
+
+1. Ask the user to run the review in the browser previewer and share the exported JSON (paste, copy, or attach the downloaded file).
+2. Read `action`: `"approved"` means proceed; `"changes_requested"` means treat `userFeedback` as required revision instructions.
+3. Cross-reference `validation.status`/`validation.decision` with the human's `action` — a human can still request changes even when deterministic validation passed (e.g. for subjective/visual reasons), and this payload lets the agent tell the two apart.
+4. Use `model.filename`/`model.modelPath` and `timestamp` to confirm the payload matches the asset revision under discussion before acting on it.
+
+
 
 mcasset currently provides deterministic checks for JSON/model structure and texture-reference resolution diagnostics. It does not automatically judge subjective visual quality (style, aesthetics, or whether the asset "looks right" for the prompt) and should not be used to auto-approve assets without user review.
 

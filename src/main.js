@@ -24,6 +24,7 @@ import {
   rectUv,
   verticalEdgeUv
 } from "./generatedItemExtrusion.js";
+import { createReviewPayload, serializeReviewPayload, validateReviewInput } from "./reviewFeedback.js";
 
 const assetFolderInput = document.querySelector("#asset-folder");
 const modelInput = document.querySelector("#model-file");
@@ -35,6 +36,17 @@ const modelBrowser = document.querySelector("#model-browser");
 const modelSearchInput = document.querySelector("#model-search");
 const modelListNode = document.querySelector("#model-list");
 const modelListNoteNode = document.querySelector("#model-list-note");
+const reviewPanel = document.querySelector("#review-panel");
+const reviewStatusNode = document.querySelector("#review-status");
+const reviewFeedbackInput = document.querySelector("#review-feedback");
+const reviewAcceptButton = document.querySelector("#review-accept");
+const reviewRequestChangesButton = document.querySelector("#review-request-changes");
+const reviewErrorNode = document.querySelector("#review-error");
+const reviewResultNode = document.querySelector("#review-result");
+const reviewResultLabelNode = document.querySelector("#review-result-label");
+const reviewResultJsonNode = document.querySelector("#review-result-json");
+const reviewCopyButton = document.querySelector("#review-copy");
+const reviewDownloadButton = document.querySelector("#review-download");
 
 const MODEL_LIST_LIMIT = 200;
 
@@ -75,6 +87,8 @@ let currentModelPath = null;
 let indexedModelPaths = [];
 let selectedModelPath = null;
 let ambiguousModelBaseNames = new Set();
+let currentSummary = null;
+let lastReviewPayload = null;
 
 assetFolderInput.addEventListener("change", async (event) => {
   const files = [...(event.target.files ?? [])];
@@ -244,14 +258,97 @@ function renderCurrentModel() {
   });
   const resolvedTextureReferences = collectResolvedTextureReferences(parsed);
   const summary = createPreviewSummary(parsed, resolvedTextureReferences);
+  currentSummary = summary;
 
   replaceModelGroup(buildModelGroup(parsed));
   renderSummary(summary);
+  resetReviewPanel();
 
   const statusFeedback = createStatusFeedback(summary);
   statusNode.className = statusFeedback.className;
   statusNode.textContent = statusFeedback.message;
 }
+
+/**
+ * Clears any prior human review decision/feedback. Called whenever a
+ * different model is loaded so a stale approval can never be mistaken for
+ * approval of the newly loaded model.
+ */
+function resetReviewPanel() {
+  lastReviewPayload = null;
+  reviewFeedbackInput.value = "";
+  reviewErrorNode.hidden = true;
+  reviewErrorNode.textContent = "";
+  reviewResultNode.hidden = true;
+  reviewResultJsonNode.textContent = "";
+  reviewPanel.hidden = false;
+  reviewStatusNode.textContent = `Reviewing "${currentFilename ?? "this model"}". No decision recorded yet.`;
+}
+
+function handleReviewDecision(action) {
+  reviewErrorNode.hidden = true;
+  reviewErrorNode.textContent = "";
+
+  const feedback = reviewFeedbackInput.value;
+  const { ok, errors } = validateReviewInput({ action, feedback });
+  if (!ok) {
+    reviewErrorNode.hidden = false;
+    reviewErrorNode.textContent = errors.join(" ");
+    return;
+  }
+
+  const payload = createReviewPayload({
+    action,
+    feedback,
+    filename: currentFilename,
+    modelPath: currentModelPath,
+    summary: currentSummary
+  });
+
+  lastReviewPayload = payload;
+  reviewStatusNode.textContent =
+    action === "approved"
+      ? `Recorded: asset approved at ${payload.timestamp}.`
+      : `Recorded: changes requested at ${payload.timestamp}.`;
+
+  reviewResultLabelNode.textContent =
+    action === "approved" ? "Approval payload (for the agent)" : "Revision request payload (for the agent)";
+  reviewResultJsonNode.textContent = serializeReviewPayload(payload);
+  reviewResultNode.hidden = false;
+}
+
+reviewAcceptButton.addEventListener("click", () => handleReviewDecision("approved"));
+reviewRequestChangesButton.addEventListener("click", () => handleReviewDecision("changes_requested"));
+
+reviewCopyButton.addEventListener("click", async () => {
+  if (!lastReviewPayload) {
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(serializeReviewPayload(lastReviewPayload));
+    reviewCopyButton.textContent = "Copied!";
+    setTimeout(() => {
+      reviewCopyButton.textContent = "Copy JSON";
+    }, 1500);
+  } catch {
+    reviewErrorNode.hidden = false;
+    reviewErrorNode.textContent = "Could not copy to clipboard. Select the JSON text and copy it manually.";
+  }
+});
+
+reviewDownloadButton.addEventListener("click", () => {
+  if (!lastReviewPayload) {
+    return;
+  }
+  const blob = new Blob([serializeReviewPayload(lastReviewPayload)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const baseName = (currentFilename ?? "model").replace(/\.json$/i, "");
+  link.href = url;
+  link.download = `${baseName}-review-${lastReviewPayload.action}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+});
 
 function buildModelGroup(parsed) {
   const group = new THREE.Group();
