@@ -39,7 +39,7 @@ export function parseMinecraftModel(source, filename = "model.json", options = {
 
   if (modelKind === "generated_item") {
     warnings.push(
-      "Generated item model uses a sprite preview from textures.layer0; pixel extrusion/thickness is not yet supported."
+      "Generated item preview uses texture alpha extrusion from textures.layer0 as an approximation; exact Minecraft item renderer parity is not yet supported."
     );
   }
 
