@@ -44,8 +44,9 @@ Use deterministic diagnostics to guide revisions, and keep human approval as the
 ## Manual browser workflow
 
 1. Load the Minecraft `assets` folder or a resource-pack folder first. Directory upload should include paths like `assets/minecraft/models/block/cube_all.json` and `assets/minecraft/textures/block/stone.png`.
-2. Select a model JSON file to preview.
-3. The previewer resolves parent/template models and textures from the loaded folder when possible.
-4. Upload additional PNG textures only when testing loose files or overrides.
+2. Use the **Indexed models** search box to filter by path/filename, then click a result to preview it. Results are capped (200 by default) with a note showing total matches so large packs stay responsive.
+3. Alternatively, use **Model JSON (manual upload)** to preview a single file without the folder picker.
+4. The previewer resolves parent/template models and textures from the loaded folder when possible.
+5. Upload additional PNG textures only when testing loose files or overrides.
 
 Block entity and special renderer fidelity remains backlog; particle-only elementless models still render as warning placeholders.

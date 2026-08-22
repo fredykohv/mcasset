@@ -74,6 +74,68 @@ input {
   color: #a7b5c8;
 }
 
+.model-browser {
+  display: grid;
+  gap: 10px;
+  margin-top: 20px;
+  padding: 18px;
+  border: 1px solid #243244;
+  border-radius: 18px;
+  background: #111a26;
+}
+
+.model-browser-label {
+  color: #d8e7f5;
+  font-weight: 700;
+}
+
+#model-search {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #2c3d52;
+  background: #0d1520;
+  color: #e5eef7;
+}
+
+.model-list {
+  display: grid;
+  gap: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.model-list-item {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: #a7b5c8;
+  font-family: inherit;
+  font-size: 0.82rem;
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.model-list-item:hover {
+  background: #1a2635;
+  color: #e5eef7;
+}
+
+.model-list-item-selected {
+  border-color: #8bd450;
+  background: rgba(139, 212, 80, 0.12);
+  color: #d8e7f5;
+}
+
+.model-list-note {
+  margin: 0;
+  color: #8aa0b2;
+  font-size: 0.78rem;
+}
+
 .status {
   margin-top: 20px;
   padding: 14px 16px;

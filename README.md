@@ -18,9 +18,11 @@ npm install
 npm run dev
 ```
 
-Then open the local Vite URL. For vanilla or resource-pack comparisons, load the Minecraft `assets` folder or resource-pack root first, then select a model JSON file. The previewer indexes `assets/<namespace>/models/**/*.json` and `assets/<namespace>/textures/**/*.png` so parent/template models and textures can resolve from the loaded folder.
+Then open the local Vite URL. Load the Minecraft `assets` folder or resource-pack root first. The previewer indexes `assets/<namespace>/models/**/*.json` and `assets/<namespace>/textures/**/*.png` so parent/template models and textures can resolve from the loaded folder.
 
-You can still upload a single model JSON without a folder. Additional texture uploads remain available for quick tests or overrides. If the summary shows `Unresolved textures` as anything other than `None`, load the containing assets/resource-pack folder or upload the listed texture file.
+Once a folder is loaded, an **Indexed models** panel appears: search by path or filename and click a result to preview it — no filesystem picker needed. With thousands of indexed models, the list is capped (200 results by default) and the note below the list tells you how many total matches exist so you can refine your search further.
+
+You can still upload a single model JSON without a folder using the **Model JSON (manual upload)** field. Additional texture uploads remain available for quick tests or overrides. If the summary shows `Unresolved textures` as anything other than `None`, load the containing assets/resource-pack folder or upload the listed texture file.
 
 For local vanilla testing, select the folder that contains `assets/minecraft/...`, for example a Minecraft version assets extraction with paths such as `assets/minecraft/models/block/cube_all.json` and `assets/minecraft/textures/block/stone.png`.
 

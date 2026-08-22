@@ -11,7 +11,7 @@
         <p class="eyebrow">Minecraft 3D Asset Preview</p>
         <h1>Preview generated Minecraft model assets before approval.</h1>
         <p class="intro">
-          Load a Java Edition assets/resource-pack folder, choose a model JSON file, and inspect whether the generated asset is valid and visually close to the request.
+          Load a Java Edition assets/resource-pack folder, then search or click an indexed model below to preview it. Manually uploading a single model JSON file is still supported.
         </p>
 
         <label class="dropzone">
@@ -19,8 +19,20 @@
           <input id="asset-folder" type="file" webkitdirectory directory multiple />
         </label>
 
+        <div id="model-browser" class="model-browser" hidden>
+          <span class="model-browser-label">Indexed models</span>
+          <input
+            id="model-search"
+            type="search"
+            placeholder="Search models by path or name..."
+            autocomplete="off"
+          />
+          <div id="model-list" class="model-list" role="listbox" aria-label="Indexed model files"></div>
+          <p id="model-list-note" class="model-list-note"></p>
+        </div>
+
         <label class="dropzone">
-          <span>Model JSON</span>
+          <span>Model JSON (manual upload)</span>
           <input id="model-file" type="file" accept=".json,application/json" />
         </label>
 
