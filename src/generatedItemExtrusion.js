@@ -39,6 +39,28 @@ export function buildGeneratedItemExtrusion(mask, width, height, depth = 1) {
   };
 }
 
+export function rectUv(rect, imageWidth, imageHeight) {
+  const u0 = rect.x / imageWidth;
+  const u1 = (rect.x + rect.width) / imageWidth;
+  const v0 = 1 - (rect.y + rect.height) / imageHeight;
+  const v1 = 1 - rect.y / imageHeight;
+  return [u0, v0, u1, v1];
+}
+
+export function horizontalEdgeUv(edge, imageWidth, imageHeight, edgeY) {
+  const u0 = edge.x / imageWidth;
+  const u1 = (edge.x + edge.length) / imageWidth;
+  const v = 1 - ((edgeY + 0.5) / imageHeight);
+  return [u0, v, u1, v];
+}
+
+export function verticalEdgeUv(edge, imageWidth, imageHeight, edgeX) {
+  const u = (edgeX + 0.5) / imageWidth;
+  const v0 = 1 - ((edge.y + edge.length) / imageHeight);
+  const v1 = 1 - (edge.y / imageHeight);
+  return [u, v0, u, v1];
+}
+
 function mergeOpaqueRects(mask, width, height) {
   const claimed = new Array(mask.length).fill(false);
   const rects = [];
