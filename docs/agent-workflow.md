@@ -52,3 +52,25 @@ Use deterministic diagnostics to guide revisions, and keep human approval as the
 5. Upload additional PNG textures only when testing loose files or overrides.
 
 Block entity and special renderer fidelity remains backlog; particle-only elementless models still render as warning placeholders. When a basename appears under both `models/item` and `models/block` (e.g. `acacia_hanging_sign`), pick the `item` result to preview the inventory/icon model; the `block` result is particle-only and only gets an approximate placeholder here.
+
+## Copilot canvas extension (in-app preview)
+
+`.github/extensions/mcasset-preview/extension.mjs` is a project-scoped Copilot CLI/Desktop extension that declares a `mcasset-preview` **canvas**. It is discovered automatically by Copilot CLI/Desktop when working in this repository (no install step) and lets an agent open an embedded, human-reviewable preview panel instead of only writing files to disk.
+
+### How the agent uses it
+
+1. Generate or revise the model JSON asset.
+2. Open the canvas with `open_canvas`, `canvasId: "mcasset-preview"`, and an `input` of either:
+   - `{ "modelPath": "<path to model.json>", "assetsRoot": "<optional resource-pack folder>", "outDir": "<optional dir to also write summary.json/preview.html>" }`, or
+   - `{ "summaryPath": "<path to an already-generated summary.json>" }` to display a prior report verbatim without re-validating.
+3. The panel renders the same deterministic diagnostics (`status`, `decision`, errors, warnings, unresolved textures, suggested next steps) as the CLI/MCP tools, computed by reusing `src/assetReport.js` / `src/modelCore.js` — no duplicated validation logic.
+4. A human clicks **Accept asset** or **Request changes** (with required feedback text) in the panel. The agent can then call the `get_review` action (no input) to poll the latest diagnostics + review status, or `submit_review` (`{ "action": "approved" | "changes_requested", "feedback"?: string }`) to record/inspect a decision programmatically. Both return the same structured payload shape as the browser previewer's Human review panel (`src/reviewFeedback.js`), so an agent that already knows how to consume that payload needs no new parsing logic.
+5. Review decisions persist per-asset (keyed by the resolved input paths, not the transient canvas `instanceId`) under the session workspace, so re-opening the same asset in a fresh panel still shows its prior review.
+
+### Current limitations
+
+- **Experimental surface.** Canvas extensions are an experimental part of the Copilot SDK/CLI wire protocol and may change between CLI releases.
+- **CLI/Desktop only.** This is not part of the Vite website; it only renders inside a Copilot host that supports canvases (`canvas-renderer` capability). Hosts without that capability simply won't show the canvas in their catalog.
+- **No 3D rendering.** The canvas shows structured diagnostics and the review form, not the browser previewer's Three.js model viewer — attach/link the website or `preview.html` alongside it for a visual check.
+- **Explicit paths only.** Like the MCP tools, it never scans directories on its own; it only reads the exact `modelPath` / `assetsRoot` / `summaryPath` / `outDir` paths supplied in `input`.
+- **Loopback-only server.** Each open instance starts its own `127.0.0.1` HTTP server on an OS-assigned ephemeral port; it is not reachable outside the local machine.

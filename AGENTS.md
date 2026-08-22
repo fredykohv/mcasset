@@ -16,6 +16,7 @@ Build a Minecraft asset preview website and an agent-usable feedback tool. The p
 - Accept optional texture image uploads and map them to model texture references by basename or resource-pack path.
 - Provide an agent-facing command that validates an asset and writes machine-readable feedback.
 - Provide a browser "Human review" panel (Accept asset / Request changes + feedback textarea) that captures the user's decision as a structured, exportable JSON payload for an agent to consume; see `src/reviewFeedback.js` and the README's "Human-in-the-loop review" section.
+- Provide a Copilot CLI/Desktop canvas extension (`.github/extensions/mcasset-preview/`) that lets an agent open the same diagnostics plus a review form as an in-app panel and fetch the resulting review payload via `get_review`/`submit_review` canvas actions; see `docs/agent-workflow.md`'s "Copilot canvas extension" section.
 
 ## Engineering guidelines
 
