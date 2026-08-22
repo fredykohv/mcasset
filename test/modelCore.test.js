@@ -4,6 +4,9 @@ import {
   createResourcePackIndex,
   createPreviewSummary,
   createStatusFeedback,
+  filterModelPaths,
+  listIndexedModelPaths,
+  modelDisplayName,
   modelReferenceCandidates,
   normalizeResourcePath,
   parseMinecraftModel,
@@ -322,4 +325,70 @@ test("uses a particle placeholder warning for elementless particle-only models",
   assert.equal(summary.decision, "request_user_approval");
   assert.deepEqual(summary.unresolvedTextureReferences, ["minecraft:block/chest"]);
   assert.deepEqual(summary.blockers, []);
+});
+
+test("lists indexed model paths sorted alphabetically", () => {
+  const index = createResourcePackIndex([
+    { path: "pack/assets/minecraft/models/item/zombie_head.json", source: "{}" },
+    { path: "pack/assets/minecraft/models/block/cube_all.json", source: "{}" },
+    { path: "pack/assets/minecraft/models/block/anvil.json", source: "{}" }
+  ]);
+
+  assert.deepEqual(listIndexedModelPaths(index), [
+    "/assets/minecraft/models/block/anvil.json",
+    "/assets/minecraft/models/block/cube_all.json",
+    "/assets/minecraft/models/item/zombie_head.json"
+  ]);
+});
+
+test("returns an empty list when the resource-pack index has no models", () => {
+  assert.deepEqual(listIndexedModelPaths(createResourcePackIndex()), []);
+  assert.deepEqual(listIndexedModelPaths(null), []);
+});
+
+test("filters model paths case-insensitively by substring", () => {
+  const paths = [
+    "/assets/minecraft/models/block/cube_all.json",
+    "/assets/minecraft/models/item/acacia_hanging_sign.json",
+    "/assets/minecraft/models/block/anvil.json"
+  ];
+
+  const result = filterModelPaths(paths, "ACACIA");
+  assert.deepEqual(result.matches, ["/assets/minecraft/models/item/acacia_hanging_sign.json"]);
+  assert.equal(result.totalMatchCount, 1);
+  assert.equal(result.truncated, false);
+});
+
+test("returns all model paths when the query is empty or whitespace", () => {
+  const paths = ["/assets/minecraft/models/block/cube_all.json", "/assets/minecraft/models/block/anvil.json"];
+
+  assert.deepEqual(filterModelPaths(paths, "").matches, paths);
+  assert.deepEqual(filterModelPaths(paths, "   ").matches, paths);
+  assert.deepEqual(filterModelPaths(paths, undefined).matches, paths);
+});
+
+test("caps filtered model results and reports truncation deterministically", () => {
+  const paths = Array.from({ length: 5 }, (_, index) => `/assets/minecraft/models/block/cube_${index}.json`);
+
+  const result = filterModelPaths(paths, "cube", { limit: 2 });
+  assert.deepEqual(result.matches, [
+    "/assets/minecraft/models/block/cube_0.json",
+    "/assets/minecraft/models/block/cube_1.json"
+  ]);
+  assert.equal(result.totalMatchCount, 5);
+  assert.equal(result.truncated, true);
+});
+
+test("does not truncate when matches are within the limit", () => {
+  const paths = ["/assets/minecraft/models/block/cube_all.json"];
+  const result = filterModelPaths(paths, "", { limit: 200 });
+  assert.equal(result.truncated, false);
+  assert.equal(result.totalMatchCount, 1);
+});
+
+test("derives a display name from a model path", () => {
+  assert.equal(modelDisplayName("/assets/minecraft/models/block/cube_all.json"), "cube_all.json");
+  assert.equal(modelDisplayName("cube_all.json"), "cube_all.json");
+  assert.equal(modelDisplayName(""), "");
+  assert.equal(modelDisplayName(null), "");
 });

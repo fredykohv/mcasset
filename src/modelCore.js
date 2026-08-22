@@ -338,6 +338,39 @@ function isTexturePath(path) {
   return /^\/assets\/[^/]+\/textures\/.+\.png$/i.test(path);
 }
 
+export function listIndexedModelPaths(resourcePackIndex) {
+  if (!resourcePackIndex?.models) {
+    return [];
+  }
+
+  return [...resourcePackIndex.models.keys()].sort((a, b) => a.localeCompare(b));
+}
+
+export function filterModelPaths(modelPaths, query, options = {}) {
+  const { limit = 200 } = options;
+  const normalizedQuery = (query ?? "").trim().toLowerCase();
+
+  const matches = normalizedQuery
+    ? modelPaths.filter((path) => path.toLowerCase().includes(normalizedQuery))
+    : [...modelPaths];
+
+  const truncated = typeof limit === "number" && limit >= 0 && matches.length > limit;
+
+  return {
+    matches: truncated ? matches.slice(0, limit) : matches,
+    totalMatchCount: matches.length,
+    truncated
+  };
+}
+
+export function modelDisplayName(modelPath) {
+  if (!modelPath || typeof modelPath !== "string") {
+    return "";
+  }
+
+  return modelPath.split("/").pop();
+}
+
 function modelIdToPath(namespace, id) {
   return `/assets/${namespace}/models/${id}.json`;
 }

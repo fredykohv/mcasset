@@ -5,7 +5,10 @@ import {
   createResourcePackIndex,
   createPreviewSummary,
   createStatusFeedback,
+  filterModelPaths,
   findModelPathForFilename,
+  listIndexedModelPaths,
+  modelDisplayName,
   normalizeTexturePath,
   parseMinecraftModel,
   resolveTextureReference,
@@ -25,6 +28,12 @@ const textureInput = document.querySelector("#texture-files");
 const statusNode = document.querySelector("#status");
 const summaryNode = document.querySelector("#summary");
 const canvas = document.querySelector("#viewer");
+const modelBrowser = document.querySelector("#model-browser");
+const modelSearchInput = document.querySelector("#model-search");
+const modelListNode = document.querySelector("#model-list");
+const modelListNoteNode = document.querySelector("#model-list-note");
+
+const MODEL_LIST_LIMIT = 200;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x101820);
@@ -60,6 +69,8 @@ let folderContextSummary = "No folder loaded";
 let currentModelText = null;
 let currentFilename = null;
 let currentModelPath = null;
+let indexedModelPaths = [];
+let selectedModelPath = null;
 
 assetFolderInput.addEventListener("change", async (event) => {
   const files = [...(event.target.files ?? [])];
@@ -83,14 +94,37 @@ assetFolderInput.addEventListener("change", async (event) => {
 
   resourcePackIndex = createResourcePackIndex(entries);
   folderContextSummary = `${resourcePackIndex.models.size} models, ${resourcePackIndex.textures.size} textures`;
+  indexedModelPaths = listIndexedModelPaths(resourcePackIndex);
+  modelSearchInput.value = "";
+  renderModelList("");
+
+  if (indexedModelPaths.length > 0) {
+    modelBrowser.hidden = false;
+  }
 
   if (currentModelText) {
     currentModelPath = findModelPathForFilename(currentFilename, resourcePackIndex) ?? currentModelPath;
     renderCurrentModel();
   } else {
     statusNode.className = "status status-ok";
-    statusNode.textContent = `Loaded folder context: ${folderContextSummary}. Select a model JSON to preview.`;
+    statusNode.textContent =
+      indexedModelPaths.length > 0
+        ? `Loaded folder context: ${folderContextSummary}. Search or click a model below to preview it.`
+        : `Loaded folder context: ${folderContextSummary}. No model JSON files were found in this folder.`;
   }
+});
+
+modelSearchInput.addEventListener("input", (event) => {
+  renderModelList(event.target.value);
+});
+
+modelListNode.addEventListener("click", (event) => {
+  const item = event.target.closest("[data-model-path]");
+  if (!item) {
+    return;
+  }
+
+  selectIndexedModel(item.dataset.modelPath);
 });
 
 modelInput.addEventListener("change", async (event) => {
@@ -102,6 +136,8 @@ modelInput.addEventListener("change", async (event) => {
   currentModelText = await file.text();
   currentFilename = file.name;
   currentModelPath = file.webkitRelativePath || findModelPathForFilename(file.name, resourcePackIndex) || file.name;
+  selectedModelPath = null;
+  renderModelList(modelSearchInput.value);
   renderCurrentModel();
 });
 
@@ -116,6 +152,59 @@ textureInput.addEventListener("change", async (event) => {
     renderCurrentModel();
   }
 });
+
+async function selectIndexedModel(modelPath) {
+  const source = resourcePackIndex.models.get(modelPath);
+  if (typeof source !== "string") {
+    return;
+  }
+
+  currentModelText = source;
+  currentFilename = modelDisplayName(modelPath);
+  currentModelPath = modelPath;
+  selectedModelPath = modelPath;
+  modelInput.value = "";
+  renderModelList(modelSearchInput.value);
+  renderCurrentModel();
+}
+
+function renderModelList(query) {
+  const { matches, totalMatchCount, truncated } = filterModelPaths(indexedModelPaths, query, {
+    limit: MODEL_LIST_LIMIT
+  });
+
+  if (indexedModelPaths.length === 0) {
+    modelListNode.replaceChildren();
+    modelListNoteNode.textContent = "Load an assets/resource-pack folder to browse indexed models here.";
+    return;
+  }
+
+  if (matches.length === 0) {
+    modelListNode.replaceChildren();
+    modelListNoteNode.textContent = `No models match "${query}".`;
+    return;
+  }
+
+  modelListNode.replaceChildren(
+    ...matches.map((path) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "model-list-item";
+      button.dataset.modelPath = path;
+      button.setAttribute("role", "option");
+      if (path === selectedModelPath) {
+        button.classList.add("model-list-item-selected");
+        button.setAttribute("aria-selected", "true");
+      }
+      button.textContent = path;
+      return button;
+    })
+  );
+
+  modelListNoteNode.textContent = truncated
+    ? `Showing ${matches.length} of ${totalMatchCount} matching models. Refine your search to narrow this down.`
+    : `${totalMatchCount} model${totalMatchCount === 1 ? "" : "s"} found.`;
+}
 
 function renderCurrentModel() {
   const parsed = parseMinecraftModel(currentModelText, currentFilename, {
@@ -422,6 +511,7 @@ function disposeGroup(group) {
 function renderSummary(summary) {
   const rows = [
     ["File", summary.filename],
+    ["Selected model path", selectedModelPath ?? "None (manual upload)"],
     ["Preview mode", summary.modelKind],
     ["Elements", String(summary.elementCount)],
     ["Textures", String(summary.textureCount)],

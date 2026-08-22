@@ -11,6 +11,7 @@ Build a Minecraft asset preview website and an agent-usable feedback tool. The p
 - Render elementless generated item models with `textures.layer0` as transparent sprite previews.
 - Show a warning placeholder for elementless particle-only block models; block-entity and special-renderer fidelity remains backlog.
 - Accept a loaded Minecraft `assets` folder or resource-pack folder as browser context for parent/template model and texture resolution.
+- After a folder is loaded, provide an in-browser searchable model list so a user can select an indexed model without reopening the filesystem picker.
 - Accept optional texture image uploads and map them to model texture references by basename or resource-pack path.
 - Provide an agent-facing command that validates an asset and writes machine-readable feedback.
 
