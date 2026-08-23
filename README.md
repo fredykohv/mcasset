@@ -67,6 +67,10 @@ Example agent workflow over MCP:
 
 The MCP tools and the browser previewer serve different purposes: the MCP tools give an agent fast, structured, non-visual diagnostics it can act on programmatically, while the browser website remains the human-facing visual review surface for the actual 3D preview.
 
+## Copilot canvas extension (Copilot CLI / Desktop)
+
+For Copilot CLI/Desktop hosts that support canvases, `.github/extensions/mcasset-preview/extension.mjs` is a project-scoped extension that lets an agent open an in-app **Minecraft asset preview** canvas: it shows the same deterministic diagnostics as the CLI/MCP tools, an actual 3D preview (cuboid elements or generated-item sprites, rendered by the same `src/modelRenderer.js` module the website uses) plus a Human review panel (Accept asset / Request changes), and returns the review as the same structured JSON payload `src/reviewFeedback.js` produces. It is discovered automatically in this repo — no separate install step. See `docs/agent-workflow.md`'s "Copilot canvas extension (in-app preview)" section for the open-input shape, actions (`get_review`, `submit_review`), 3D preview implementation notes, and current limitations (experimental surface, loopback-only server).
+
 ## Agent workflow for asset generation loops
 
 Use this loop when an agent is producing Minecraft model files:
