@@ -2,22 +2,38 @@
 //
 // Project-scoped canvas that lets an agent open an embedded preview of a
 // Minecraft asset (model JSON) inside the app, showing the same
-// deterministic diagnostics as `npm run asset:preview` / the MCP tools, and
-// letting a human Accept the asset or Request changes with feedback text.
-// The review decision is returned to the agent as the same structured JSON
-// payload the browser previewer's "Human review" panel produces
-// (`src/reviewFeedback.js`), so both surfaces stay consistent.
+// deterministic diagnostics as `npm run asset:preview` / the MCP tools, an
+// actual 3D preview of the parsed model (cuboid elements or generated-item
+// sprites), and letting a human Accept the asset or Request changes with
+// feedback text. The review decision is returned to the agent as the same
+// structured JSON payload the browser previewer's "Human review" panel
+// produces (`src/reviewFeedback.js`), so both surfaces stay consistent.
 //
 // This extension does not change the existing website or MCP server; it
-// only reuses their pure validation/report logic (`src/assetReport.js`,
-// `src/modelCore.js`, `src/reviewFeedback.js`) from a new, additive surface.
+// only reuses their pure validation/report and rendering logic
+// (`src/assetReport.js`, `src/modelCore.js`, `src/modelRenderer.js`,
+// `src/generatedItemExtrusion.js`, `src/reviewFeedback.js`) from a new,
+// additive surface. `src/modelRenderer.js` (the Three.js scene builder) is
+// served unmodified to the canvas iframe as a static ES module
+// (`vendorAssets.mjs`) rather than duplicated -- this Node process itself
+// never imports three.js.
 //
 // See docs/agent-workflow.md for the full workflow and current limitations.
 
+import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { CanvasError, createCanvas, joinSession } from "@github/copilot-sdk/extension";
 import { renderPage } from "./render.mjs";
-import { buildStatePayload, computeDiagnostics, domainKeyFor, loadReview, recordReview } from "./state.mjs";
+import {
+  buildStatePayload,
+  computeDiagnostics,
+  domainKeyFor,
+  loadReview,
+  recordReview,
+  resolveTextureFilePath
+} from "./state.mjs";
+import { isVendorRoute, serveVendorAsset } from "./vendorAssets.mjs";
+
 
 // Canvas open input: either `modelPath` (validated live, optionally writing
 // report artifacts to `outDir`) or `summaryPath` (an already-generated
@@ -98,6 +114,10 @@ function sendJson(res, statusCode, body) {
 /** Builds the current `/api/state` payload for an instance, on demand. */
 async function currentState(entry) {
   const diagnostics = await computeDiagnostics(entry.input, entry.workingDirectory);
+  // Cached so the burst of /api/texture requests the iframe makes right
+  // after fetching /api/state can reuse the same resourcePackIndex instead
+  // of re-walking assetsRoot once per texture.
+  entry.lastDiagnostics = diagnostics;
   const review = await loadReview(session.workspacePath, entry.domainKey);
   return buildStatePayload({
     instanceId: entry.instanceId,
@@ -106,6 +126,31 @@ async function currentState(entry) {
     diagnostics,
     review
   });
+}
+
+/**
+ * Serves texture bytes for the canvas iframe's 3D viewer. `normalizedPath`
+ * must be a key already present in the current instance's
+ * `resourcePackIndex.textures` (built once from the caller's explicit
+ * `assetsRoot`); this never reads a caller-supplied filesystem path
+ * directly, only files this extension already enumerated while indexing
+ * that assetsRoot.
+ */
+async function serveTexture(entry, normalizedPath, res) {
+  const diagnostics = entry.lastDiagnostics ?? (await computeDiagnostics(entry.input, entry.workingDirectory));
+  const fullPath = resolveTextureFilePath(diagnostics.resourcePackIndex, normalizedPath);
+  if (!fullPath) {
+    sendJson(res, 404, { error: `No indexed texture file for "${normalizedPath}".` });
+    return;
+  }
+
+  try {
+    const bytes = await readFile(fullPath);
+    res.writeHead(200, { "Content-Type": "image/png", "Content-Length": bytes.length });
+    res.end(bytes);
+  } catch (error) {
+    sendJson(res, 404, { error: error instanceof Error ? error.message : String(error) });
+  }
 }
 
 async function startServer(instanceId) {
@@ -138,8 +183,25 @@ async function handleRequest(instanceId, req, res) {
     return;
   }
 
+  if (req.method === "GET" && isVendorRoute(url.pathname)) {
+    const asset = await serveVendorAsset(url.pathname);
+    res.writeHead(200, { "Content-Type": asset.contentType });
+    res.end(asset.body);
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/state") {
     sendJson(res, 200, await currentState(entry));
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/texture") {
+    const texturePath = url.searchParams.get("path");
+    if (!texturePath) {
+      sendJson(res, 400, { error: "Query parameter \"path\" is required." });
+      return;
+    }
+    await serveTexture(entry, texturePath, res);
     return;
   }
 

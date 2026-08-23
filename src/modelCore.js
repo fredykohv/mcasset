@@ -217,6 +217,24 @@ export function resolveUploadedTexture(texturePath, uploadedTextureIndex) {
   return null;
 }
 
+/**
+ * Like `resolveUploadedTexture`, but returns the matching normalized index
+ * key instead of the map's value. Used by callers that need to know *which*
+ * candidate path matched (e.g. to build a texture-fetch URL) rather than an
+ * already-loaded texture object.
+ */
+export function resolveUploadedTextureKey(texturePath, uploadedTextureIndex) {
+  const candidates = textureCandidates(texturePath);
+
+  for (const candidate of candidates) {
+    if (uploadedTextureIndex.has(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
 export function resolveTextureReference(reference, textures) {
   if (!reference || typeof reference !== "string") {
     return reference;

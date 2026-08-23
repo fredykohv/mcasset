@@ -5,11 +5,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   buildStatePayload,
+  buildTextureManifest,
   computeDiagnostics,
   domainKeyFor,
   loadReview,
   recordReview,
   resolveInputPath,
+  resolveTextureFilePath,
   saveReview
 } from "../.github/extensions/mcasset-preview/state.mjs";
 
@@ -183,6 +185,64 @@ test("buildStatePayload shapes the combined diagnostics/review response", () => 
     summary: { status: "pass" },
     artifacts: null,
     diagnosticsError: null,
+    review: null,
+    parsed: null,
+    textureManifest: []
+  });
+});
+
+test("buildStatePayload passes through parsed model data and builds a texture manifest", () => {
+  const parsed = {
+    modelKind: "cuboid",
+    textureReferences: ["block/stone", "block/missing"],
+    elements: []
+  };
+  const stoneKey = "/assets/minecraft/textures/block/stone.png";
+  const resourcePackIndex = {
+    textures: new Map([[stoneKey, { relativePath: "assets/minecraft/textures/block/stone.png", fullPath: "/tmp/x/block/stone.png" }]])
+  };
+
+  const payload = buildStatePayload({
+    instanceId: "inst-1",
+    domainKey: "key-1",
+    input: { modelPath: "a.json" },
+    diagnostics: { summary: { status: "pass" }, artifacts: null, error: null, parsed, resourcePackIndex },
     review: null
   });
+
+  assert.deepEqual(payload.parsed, parsed);
+  assert.deepEqual(payload.textureManifest, [
+    { reference: "block/stone", path: stoneKey },
+    { reference: "block/missing", path: null }
+  ]);
+});
+
+
+test("buildTextureManifest resolves each parsed texture reference against the resource pack index", () => {
+  const stoneKey = "/assets/minecraft/textures/block/stone.png";
+  const resourcePackIndex = {
+    textures: new Map([[stoneKey, { relativePath: "assets/minecraft/textures/block/stone.png", fullPath: "/tmp/x/block/stone.png" }]])
+  };
+  const parsed = { textureReferences: ["block/stone", "block/unresolved"] };
+
+  assert.deepEqual(buildTextureManifest(parsed, resourcePackIndex), [
+    { reference: "block/stone", path: stoneKey },
+    { reference: "block/unresolved", path: null }
+  ]);
+});
+
+test("buildTextureManifest returns an empty array when parsed or resourcePackIndex is missing", () => {
+  assert.deepEqual(buildTextureManifest(null, null), []);
+  assert.deepEqual(buildTextureManifest({ textureReferences: ["a"] }, null), []);
+});
+
+test("resolveTextureFilePath returns the indexed file's fullPath, or null if unresolved", () => {
+  const stoneKey = "/assets/minecraft/textures/block/stone.png";
+  const resourcePackIndex = {
+    textures: new Map([[stoneKey, { relativePath: "assets/minecraft/textures/block/stone.png", fullPath: "/tmp/x/block/stone.png" }]])
+  };
+
+  assert.equal(resolveTextureFilePath(resourcePackIndex, stoneKey), "/tmp/x/block/stone.png");
+  assert.equal(resolveTextureFilePath(resourcePackIndex, "/assets/minecraft/textures/block/missing.png"), null);
+  assert.equal(resolveTextureFilePath(null, stoneKey), null);
 });

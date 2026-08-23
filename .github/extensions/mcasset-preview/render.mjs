@@ -1,11 +1,15 @@
 // Self-contained HTML/CSS/JS for the mcasset-preview canvas iframe.
 //
-// Deliberately dependency-free: no bundler, no CDN scripts, no framework.
-// The page fetches its own state from the loopback server (`/api/state`)
-// and posts review decisions back to it (`/api/review`); it never talks to
-// the CLI/runtime directly. Styling follows the app's canvas theme-token
-// contract (semantic CSS variables with plain fallbacks) documented by the
-// create-canvas skill.
+// Diagnostics and the Human review panel are dependency-free: no bundler, no
+// CDN scripts, no framework. The 3D preview is the one exception -- it loads
+// three.js and this repo's own src/modelRenderer.js as plain ES modules,
+// served locally by this extension's own loopback server (never a CDN or a
+// bundler run at extension runtime) and wired together via an
+// <script type="importmap">. The page fetches its own state from the
+// loopback server (`/api/state`) and posts review decisions back to it
+// (`/api/review`); it never talks to the CLI/runtime directly. Styling
+// follows the app's canvas theme-token contract (semantic CSS variables with
+// plain fallbacks) documented by the create-canvas skill.
 
 function escapeHtml(value) {
   return String(value)
@@ -116,6 +120,15 @@ export function renderPage({ instanceId }) {
         border: 1px solid var(--border-color-default, #243244);
         font-size: 12px;
       }
+      .viewer-wrap {
+        width: 100%;
+        height: 360px;
+        border: 1px solid var(--border-color-default, #243244);
+        border-radius: 8px;
+        overflow: hidden;
+        background: #101820;
+      }
+      #viewer-canvas { width: 100%; height: 100%; display: block; }
     </style>
   </head>
   <body>
@@ -124,6 +137,14 @@ export function renderPage({ instanceId }) {
       <p class="subtitle" id="subtitle">Loading diagnostics&hellip;</p>
 
       <div id="error-banner" class="error-banner" style="display:none;"></div>
+
+      <section class="card" id="viewer-card">
+        <h2 style="margin-top:0;">3D preview</h2>
+        <div class="viewer-wrap">
+          <canvas id="viewer-canvas"></canvas>
+        </div>
+        <p class="muted" id="viewer-status">Loading 3D preview&hellip;</p>
+      </section>
 
       <section class="card" id="diagnostics-card">
         <p class="muted">Fetching diagnostics&hellip;</p>
@@ -142,8 +163,23 @@ export function renderPage({ instanceId }) {
       </section>
     </main>
 
-    <script>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "/vendor/three.module.js",
+          "three/examples/jsm/controls/OrbitControls.js": "/vendor/OrbitControls.js"
+        }
+      }
+    </script>
+    <script type="module">
+      import { initViewer, renderModel } from "/app.js";
+
       const instanceId = ${escapeJsString(instanceId)};
+      const viewer = initViewer(document.getElementById("viewer-canvas"));
+
+      function setViewerStatus(message) {
+        document.getElementById("viewer-status").textContent = message;
+      }
 
       function statusClass(status) {
         return status ? "status-" + status : "";
@@ -245,6 +281,9 @@ export function renderPage({ instanceId }) {
         const state = await res.json();
         renderDiagnostics(state);
         renderReview(state);
+        await renderModel(viewer, state, setViewerStatus).catch((error) => {
+          setViewerStatus("3D preview failed: " + error.message);
+        });
         return state;
       }
 

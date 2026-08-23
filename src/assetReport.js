@@ -66,7 +66,14 @@ export async function buildResourcePackIndexFromDisk(assetsRoot) {
         entries.push({ path: file.relativePath, source });
       }
     } else if (file.relativePath.toLowerCase().endsWith(".png")) {
-      entries.push({ path: file.relativePath, texture: true });
+      // Carry the absolute file path alongside the relative one so callers
+      // that need to stream the actual image bytes (e.g. the mcasset-preview
+      // canvas's 3D viewer) can do so without re-walking the assets folder.
+      // `createResourcePackIndex` stores this whole object as the texture
+      // map's value (see modelCore.js); existing callers only check
+      // truthiness/presence, so this is additive and doesn't change
+      // existing diagnostics behavior.
+      entries.push({ path: file.relativePath, file: { relativePath: file.relativePath, fullPath: file.fullPath } });
     }
   }
 
@@ -148,7 +155,7 @@ export async function validateAssetFile({ modelPath, assetsRoot }) {
   const resolvedTextureReferences = collectResolvedTextureReferences(parsed, textureIndex);
   const summary = createPreviewSummary(parsed, resolvedTextureReferences);
 
-  return { parsed, summary };
+  return { parsed, summary, resourcePackIndex: resourcePackIndex ?? null };
 }
 
 /**
@@ -158,7 +165,7 @@ export async function validateAssetFile({ modelPath, assetsRoot }) {
  * paths so callers (CLI or MCP tools) can present or link to the report.
  */
 export async function generateAssetReport({ modelPath, assetsRoot, outDir }) {
-  const { summary } = await validateAssetFile({ modelPath, assetsRoot });
+  const { summary, parsed, resourcePackIndex } = await validateAssetFile({ modelPath, assetsRoot });
 
   const artifacts = {};
 
@@ -172,7 +179,7 @@ export async function generateAssetReport({ modelPath, assetsRoot, outDir }) {
     artifacts.previewPath = previewPath;
   }
 
-  return { summary, artifacts };
+  return { summary, parsed, resourcePackIndex, artifacts };
 }
 
 export function renderReport(summary) {
