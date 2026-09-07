@@ -4,7 +4,7 @@ This document defines the recommended agent loop for generated Minecraft model a
 
 ## Loop
 
-1. Generate a model JSON asset.
+1. Generate a model JSON asset and its textures. For vanilla-style weapons, use the pixel-art item recipe below.
 2. Run the CLI or call the equivalent MCP tool:
 
 ```bash
@@ -16,8 +16,35 @@ Or, for MCP-capable agent clients (e.g. GitHub Copilot Desktop) with the mcasset
 3. Read `<output-dir>/summary.json` (CLI) or the tool result payload (MCP) — both share the same structured fields.
 4. Use decision fields:
    - `status: fail` or `decision: revise_asset` -> revise the model and rerun.
-   - `status: pass` or `status: pass_with_warnings` with `decision: request_user_approval` -> ask the user to approve.
-5. In user-facing messages, attach or reference `<output-dir>/preview.html`.
+   - `status: pass` or `status: pass_with_warnings` with `decision: request_user_approval` -> proceed to visual review.
+5. Open the actual 3D view. In a canvas-capable Copilot host, pass the MCP response's `canvasPreview.canvasId` and `canvasPreview.input` to `open_canvas` with a new `instanceId`. Otherwise load the model and textures in the website.
+6. Inspect the visible front, back, thickness, silhouette and material colors; then let the human accept or request changes. A successful HTTP request is not evidence of successful rendering. `preview.html` is only a diagnostic report, and `summaryPath` alone cannot render a model.
+
+## Pixel-art item authoring
+
+Use a transparent pixel-art texture and thin generated-item extrusion for a vanilla-style sword, rather than a stack of thick blocks. Start with `examples/amethyst-sword/`: it contains an original 16x16 RGBA sword atlas and a model with `minecraft:builtin/generated` as its engine parent. No Minecraft installation is needed to preview it.
+
+1. Define the silhouette and material regions first: long pointed crystal blade, compact bronze guard, short dark wrapped grip, and a small pommel.
+2. Paint those regions with distinct palette ramps. One texture atlas can contain several materials; the number of PNG files is not a measure of material variety. Keep unused pixels transparent.
+3. Point `textures.layer0` at the atlas and omit cuboid `elements`. The preview extrudes the opaque silhouette to one model unit, with side walls sampled from the opaque edge pixels.
+4. Run structural diagnostics, then inspect the live view from front, side and back. Visual acceptance belongs to the human, even when all diagnostics pass.
+
+Rebuild the reference PNG from its editable pixel grid and palette using `npm run example:sword`. The source is `scripts/generate-amethyst-sword.mjs`; the committed PNG is ready to use without regeneration.
+
+```bash
+npm run asset:preview -- examples/amethyst-sword/assets/mcasset/models/item/amethyst_sword.json --assets examples/amethyst-sword --out preview-output/amethyst-sword
+```
+
+For the in-app view, open `mcasset-preview` with paths resolved relative to the repository:
+
+```json
+{
+  "modelPath": "examples/amethyst-sword/assets/mcasset/models/item/amethyst_sword.json",
+  "assetsRoot": "examples/amethyst-sword"
+}
+```
+
+Use absolute paths when crossing session/worktree boundaries. This is a preview-ready asset bundle, not an installable resource pack or an item registration. Display transforms are included in the model for consumers that support them; mcasset's current orbit viewer does not apply them. Highlights are painted, not an animated enchantment glint. The generated-item fidelity warning remains intentional.
 
 ## How to interpret `summary.json`
 
@@ -31,7 +58,7 @@ Or, for MCP-capable agent clients (e.g. GitHub Copilot Desktop) with the mcasset
 - `elements` array presence and per-element coordinate validation.
 - Face normalization and UV shape checks.
 - Texture reference collection and unresolved texture diagnostics.
-- Browser-only assets/resource-pack folder context for resolving parent/template model JSON and PNG textures.
+- Browser folder uploads or explicit MCP/CLI assets-root context for resolving parent/template model JSON and PNG textures.
 - Parent texture inheritance and parent `elements` inheritance when a child model has no own `elements`.
 - Structured pass/fail decision output for agent routing.
 

@@ -161,3 +161,36 @@ test("preview_minecraft_asset surfaces a tool error without writing artifacts fo
   await server.close();
   await rm(dir, { recursive: true, force: true });
 });
+
+test("preview tool hands off explicit absolute inputs to the real canvas, not the HTML report", async (t) => {
+  const { client, server } = await connectedClient();
+  const dir = await makeTempDir();
+  t.after(async () => {
+    await client.close();
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const modelPath = "examples/amethyst-sword/assets/mcasset/models/item/amethyst_sword.json";
+  const assetsRoot = "examples/amethyst-sword";
+  const outDir = path.relative(process.cwd(), dir);
+  for (const assets of [undefined, assetsRoot]) {
+    const result = await client.callTool({
+      name: "preview_minecraft_asset",
+      arguments: { modelPath, outDir, ...(assets ? { assetsRoot: assets } : {}) }
+    });
+    assert.equal(result.isError, undefined);
+    const payload = JSON.parse(result.content[0].text);
+    assert.deepEqual(payload.canvasPreview, {
+      canvasId: "mcasset-preview",
+      input: {
+        modelPath: path.resolve(modelPath),
+        outDir: path.resolve(outDir),
+        ...(assets ? { assetsRoot: path.resolve(assets) } : {})
+      }
+    });
+    if (assets) {
+      assert.match(payload.suggestedNextSteps.join(" "), /mcasset-preview/);
+      assert.match(payload.suggestedNextSteps.join(" "), /diagnostic report, not a 3D preview/);
+    }
+  }
+});

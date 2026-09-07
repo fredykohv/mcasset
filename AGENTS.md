@@ -45,12 +45,12 @@ npm run mcp
 
 When you are generating or revising Minecraft model assets, use this loop:
 
-1. Generate or update the model JSON file.
-2. Run `npm run asset:preview -- <model.json> --out <dir>`.
+1. Generate or update the model JSON and its textures. For vanilla-style weapons, follow the "Pixel-art item authoring" recipe in `docs/agent-workflow.md`.
+2. Call MCP `preview_minecraft_asset` with explicit model/assets/output paths, or run `npm run asset:preview -- <model.json> --assets <assets-root> --out <dir>`.
 3. Read `<dir>/summary.json` and branch on `status` / `decision`.
 4. If `status` is `fail` (or decision is `revise_asset`), revise the asset to resolve blockers, then rerun the command.
-5. If `status` is `pass` or `pass_with_warnings` (decision `request_user_approval`), present the results to the user and ask for approval.
-6. In user-facing responses, attach or link `<dir>/preview.html` so approval is based on the generated report.
+5. If `status` is `pass` or `pass_with_warnings`, open the actual interactive view. In a supporting Copilot host, use the MCP result's `canvasPreview` with `open_canvas` and a new `instanceId`; otherwise load the model and textures in the website.
+6. Inspect the rendered model's front, back, thickness, and material regions, then request human feedback. HTTP success and `preview.html` only establish report delivery, not visible 3D rendering.
 
 Interpretation rules:
 
