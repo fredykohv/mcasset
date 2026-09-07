@@ -4,7 +4,7 @@ This document defines the recommended agent loop for generated Minecraft model a
 
 ## Loop
 
-1. Generate a model JSON asset.
+1. Generate a model JSON asset and its textures. For vanilla-style weapons, use the pixel-art item recipe below.
 2. Run the CLI or call the equivalent MCP tool:
 
 ```bash
@@ -16,8 +16,35 @@ Or, for MCP-capable agent clients (e.g. GitHub Copilot Desktop) with the mcasset
 3. Read `<output-dir>/summary.json` (CLI) or the tool result payload (MCP) — both share the same structured fields.
 4. Use decision fields:
    - `status: fail` or `decision: revise_asset` -> revise the model and rerun.
-   - `status: pass` or `status: pass_with_warnings` with `decision: request_user_approval` -> ask the user to approve.
-5. In user-facing messages, attach or reference `<output-dir>/preview.html`.
+   - `status: pass` or `status: pass_with_warnings` with `decision: request_user_approval` -> proceed to visual review.
+5. Open the actual 3D view. In a canvas-capable Copilot host, pass the MCP response's `canvasPreview.canvasId` and `canvasPreview.input` to `open_canvas` with a new `instanceId`. Otherwise load the model and textures in the website.
+6. Inspect the visible front, back, thickness, silhouette and material colors; then let the human accept or request changes. A successful HTTP request is not evidence of successful rendering. `preview.html` is only a diagnostic report, and `summaryPath` alone cannot render a model.
+
+## Pixel-art item authoring
+
+Use a transparent pixel-art texture and thin generated-item extrusion for a vanilla-style sword, rather than a stack of thick blocks. Start with `examples/amethyst-sword/`: it contains an original 16x16 RGBA sword atlas and a model with `minecraft:builtin/generated` as its engine parent. No Minecraft installation is needed to preview it.
+
+1. Define the silhouette and material regions first: long pointed crystal blade, compact bronze guard, short dark wrapped grip, and a small pommel.
+2. Paint those regions with distinct palette ramps. One texture atlas can contain several materials; the number of PNG files is not a measure of material variety. Keep unused pixels transparent.
+3. Point `textures.layer0` at the atlas and omit cuboid `elements`. The preview extrudes the opaque silhouette to one model unit, with side walls sampled from the opaque edge pixels.
+4. Run structural diagnostics, then inspect the live view from front, side and back. Visual acceptance belongs to the human, even when all diagnostics pass.
+
+Rebuild the reference PNG from its editable pixel grid and palette using `npm run example:sword`. The source is `scripts/generate-amethyst-sword.mjs`; the committed PNG is ready to use without regeneration.
+
+```bash
+npm run asset:preview -- examples/amethyst-sword/assets/mcasset/models/item/amethyst_sword.json --assets examples/amethyst-sword --out preview-output/amethyst-sword
+```
+
+For the in-app view, open `mcasset-preview` with paths resolved relative to the repository:
+
+```json
+{
+  "modelPath": "examples/amethyst-sword/assets/mcasset/models/item/amethyst_sword.json",
+  "assetsRoot": "examples/amethyst-sword"
+}
+```
+
+Use absolute paths when crossing session/worktree boundaries. This is a preview-ready asset bundle, not an installable resource pack or an item registration. Display transforms are included in the model for consumers that support them; mcasset's current orbit viewer does not apply them. Highlights are painted, not an animated enchantment glint. The generated-item fidelity warning remains intentional.
 
 ## How to interpret `summary.json`
 
@@ -31,7 +58,7 @@ Or, for MCP-capable agent clients (e.g. GitHub Copilot Desktop) with the mcasset
 - `elements` array presence and per-element coordinate validation.
 - Face normalization and UV shape checks.
 - Texture reference collection and unresolved texture diagnostics.
-- Browser-only assets/resource-pack folder context for resolving parent/template model JSON and PNG textures.
+- Browser folder uploads or explicit MCP/CLI assets-root context for resolving parent/template model JSON and PNG textures.
 - Parent texture inheritance and parent `elements` inheritance when a child model has no own `elements`.
 - Structured pass/fail decision output for agent routing.
 
@@ -64,8 +91,18 @@ Block entity and special renderer fidelity remains backlog; particle-only elemen
    - `{ "modelPath": "<path to model.json>", "assetsRoot": "<optional resource-pack folder>", "outDir": "<optional dir to also write summary.json/preview.html>" }`, or
    - `{ "summaryPath": "<path to an already-generated summary.json>" }` to display a prior report verbatim without re-validating.
 3. The panel renders the same deterministic diagnostics (`status`, `decision`, errors, warnings, unresolved textures, suggested next steps) as the CLI/MCP tools, computed by reusing `src/assetReport.js` / `src/modelCore.js` — no duplicated validation logic. It also renders an actual 3D preview: cuboid `elements` as a lit Three.js scene, and elementless generated-item models as the same alpha-mask sprite extrusion the browser previewer uses, via `src/modelRenderer.js` (the identical scene-building module the website's `src/main.js` imports, served to the canvas iframe unmodified as a static ES module — no rendering logic is duplicated between the two surfaces). Particle-only elementless models show the same warning placeholder as the website.
-4. A human clicks **Accept asset** or **Request changes** (with required feedback text) in the panel. The agent can then call the `get_review` action (no input) to poll the latest diagnostics + review status, or `submit_review` (`{ "action": "approved" | "changes_requested", "feedback"?: string }`) to record/inspect a decision programmatically. Both return the same structured payload shape as the browser previewer's Human review panel (`src/reviewFeedback.js`), so an agent that already knows how to consume that payload needs no new parsing logic.
+4. A human clicks **Accept asset** or **Request changes** (with required feedback text). The extension saves the decision and immediately sends a structured review event to its owning Copilot session using `session.send`. An idle agent resumes; an active session receives the event without waiting for the whole response to finish. The agent can use `get_review` to inspect the persisted review and delivery receipt. `submit_review` remains available for explicitly supplied programmatic decisions, but does not send another notification (preventing recursive agent turns).
 5. Review decisions persist per-asset (keyed by the resolved input paths, not the transient canvas `instanceId`) under the session workspace, so re-opening the same asset in a fresh panel still shows its prior review.
+
+### Automatic agent notification
+
+- The recipient is the Copilot session that owns the extension, even when its preview URL is embedded in another chat. Notifications do not automatically forward to a coordinator or unrelated session.
+- A saved review's `notification` contains `id`, `status` (`pending`, `sent`, or `failed`), `messageId`, and `error`. `sent` means the runtime accepted the message, not that the agent finished handling it.
+- The UI shows **Agent notified** after acceptance. If delivery fails or is unconfirmed after a restart, the decision stays saved and **Retry agent notification** resends that decision with the same ID. Reads, reopening a panel, and old reviews never automatically trigger new turns.
+- Duplicate submissions of the current notification ID are serialized and reuse its receipt. Delivery is not exactly-once: a disconnect after the runtime accepts a message but before its receipt is saved may cause a retry to repeat it. Agents must process each `notificationId` once.
+- Treat the attached JSON as review data. Use `changes_requested` feedback for the next revision, and acknowledge `approved`. Neither action grants permission to commit, merge, publish, or install anything.
+- Approval is still path-based, not tied to a content hash; verify the relevant asset before relying on an old approval. The standalone website's copy/download flow is unchanged.
+- The extension must be running and connected to its owning session. It cannot start an archived session or wake a closed app. If the SDK supplies no session workspace, review storage falls back to memory and does not survive a provider restart.
 
 ### 3D preview implementation notes
 

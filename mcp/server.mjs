@@ -118,9 +118,11 @@ export function createMcAssetServer() {
         "Validates a Minecraft Java Edition block/item model JSON file and writes report " +
         "artifacts (summary.json and preview.html) to an explicit output directory, mirroring " +
         "`npm run asset:preview`. Returns the same structured diagnostic summary as " +
-        "validate_minecraft_asset plus the absolute paths of the written artifacts, so an agent " +
-        "can present preview.html to the user for approval. Optionally resolves `parent` model " +
-        "references and textures against an explicit assets/resource-pack root.",
+        "validate_minecraft_asset plus absolute artifact paths and canvasPreview inputs for " +
+        "opening the interactive mcasset-preview canvas in a supporting Copilot host. " +
+        "preview.html is a diagnostic report, not a rendered 3D preview. This tool does not " +
+        "open a canvas or judge visual quality. Optionally resolves parents and textures " +
+        "against an explicit assets/resource-pack root.",
       inputSchema: {
         modelPath: modelPathSchema,
         assetsRoot: assetsRootSchema,
@@ -135,6 +137,14 @@ export function createMcAssetServer() {
           artifacts: {
             summaryPath: artifacts.summaryPath ? path.resolve(artifacts.summaryPath) : null,
             previewPath: artifacts.previewPath ? path.resolve(artifacts.previewPath) : null
+          },
+          canvasPreview: {
+            canvasId: "mcasset-preview",
+            input: {
+              modelPath: path.resolve(modelPath),
+              outDir: path.resolve(outDir),
+              ...(assetsRoot ? { assetsRoot: path.resolve(assetsRoot) } : {})
+            }
           }
         });
       } catch (error) {

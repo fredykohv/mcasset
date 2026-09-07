@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "asset:preview": "node scripts/preview-asset.mjs",
+    "example:sword": "node scripts/generate-amethyst-sword.mjs",
     "mcp": "node mcp/server.mjs",
     "test": "node --test"
   },

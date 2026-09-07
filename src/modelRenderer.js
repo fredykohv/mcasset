@@ -230,7 +230,8 @@ function buildGeneratedItemGroup(parsed, textureIndex) {
     group.add(front);
 
     const backGeometry = new THREE.PlaneGeometry(width, height);
-    setPlaneUv(backGeometry, rectUv(rect, imageData.width, imageData.height));
+    const [u0, v0, u1, v1] = rectUv(rect, imageData.width, imageData.height);
+    setPlaneUv(backGeometry, [u1, v0, u0, v1]);
     const back = new THREE.Mesh(backGeometry, frontBackMaterial);
     back.position.set(centerX, centerY, -halfDepth);
     back.rotation.y = Math.PI;
@@ -256,27 +257,23 @@ function buildGeneratedItemGroup(parsed, textureIndex) {
 function addHorizontalSide(group, edge, pixelWidth, pixelHeight, halfDepth, imageWidth, imageHeight, direction, material) {
   const width = edge.length * pixelWidth;
   const centerX = (edge.x + edge.length / 2) * pixelWidth - 8;
-  const y = 8 - edge.y * pixelHeight;
-  const z = direction < 0 ? -halfDepth : halfDepth;
+  const y = 8 - (edge.y + (direction > 0 ? 1 : 0)) * pixelHeight;
   const geometry = new THREE.PlaneGeometry(width, halfDepth * 2);
-  const sampledY = direction < 0 ? edge.y : edge.y + 1;
-  setPlaneUv(geometry, horizontalEdgeUv(edge, imageWidth, imageHeight, sampledY));
+  setPlaneUv(geometry, horizontalEdgeUv(edge, imageWidth, imageHeight, edge.y));
   const side = new THREE.Mesh(geometry, material);
-  side.position.set(centerX, y, z);
+  side.position.set(centerX, y, 0);
   side.rotation.x = direction < 0 ? Math.PI / 2 : -Math.PI / 2;
   group.add(side);
 }
 
 function addVerticalSide(group, edge, pixelWidth, pixelHeight, halfDepth, imageWidth, imageHeight, direction, material) {
   const height = edge.length * pixelHeight;
-  const x = edge.x * pixelWidth - 8;
+  const x = (edge.x + (direction > 0 ? 1 : 0)) * pixelWidth - 8;
   const centerY = 8 - (edge.y + edge.length / 2) * pixelHeight;
-  const z = direction < 0 ? -halfDepth : halfDepth;
   const geometry = new THREE.PlaneGeometry(halfDepth * 2, height);
-  const sampledX = direction < 0 ? edge.x : edge.x + 1;
-  setPlaneUv(geometry, verticalEdgeUv(edge, imageWidth, imageHeight, sampledX));
+  setPlaneUv(geometry, verticalEdgeUv(edge, imageWidth, imageHeight, edge.x));
   const side = new THREE.Mesh(geometry, material);
-  side.position.set(x, centerY, z);
+  side.position.set(x, centerY, 0);
   side.rotation.y = direction < 0 ? Math.PI / 2 : -Math.PI / 2;
   group.add(side);
 }

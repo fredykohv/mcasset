@@ -468,7 +468,7 @@ function resolveParentModel(model, context) {
 
 function resolveParentModelRecursive(model, modelPath, context, stack) {
   const parent = model?.parent;
-  if (typeof parent !== "string") {
+  if (typeof parent !== "string" || parent === "builtin/generated" || parent === "minecraft:builtin/generated") {
     return { model, parentChain: [] };
   }
 
@@ -720,7 +720,11 @@ function buildRevisionSteps(parsed, unresolvedTextureReferences) {
 }
 
 function buildApprovalSteps(parsed) {
-  const steps = ["Share preview.html with the user and ask whether the preview matches the requested asset."];
+  const steps = [
+    "Open the mcasset-preview canvas with modelPath and assetsRoot in a supporting Copilot host, or load the model and textures in the website.",
+    "Inspect the rendered silhouette, proportions, thickness, and material colors before asking the human to accept or request changes.",
+    "preview.html is a diagnostic report, not a 3D preview; structural validity does not establish visual quality."
+  ];
   if (parsed.warnings.length > 0) {
     steps.push("Include the warnings in your message so the user can decide whether they are acceptable.");
   }

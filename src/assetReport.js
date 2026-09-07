@@ -219,6 +219,7 @@ export function renderReport(summary) {
   <body>
     <main>
       <h1>Minecraft asset preview report</h1>
+      <p>This is a diagnostic report, not a 3D preview. Open the model and textures in the mcasset-preview Copilot canvas or the website for visual review.</p>
       <p class="status-${summary.status}">${summary.status === "fail" ? "The model failed deterministic checks." : summary.status === "pass_with_warnings" ? "The model passed checks with warnings." : "The model passed deterministic checks."}</p>
       <table>
         <tbody>
@@ -235,7 +236,7 @@ export function renderReport(summary) {
       </section>
       <section class="approval">
         <h2>Approval prompt</h2>
-        <p>Does this preview fit the requested Minecraft asset well enough to approve, or should the asset be revised?</p>
+        <p>After inspecting the interactive 3D view, does the asset match the requested silhouette, proportions, and materials? Structural checks alone do not establish visual quality.</p>
       </section>
       <section class="section">
         <h2>Agent decision payload</h2>

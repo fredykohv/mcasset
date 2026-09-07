@@ -186,6 +186,7 @@ test("buildStatePayload shapes the combined diagnostics/review response", () => 
     artifacts: null,
     diagnosticsError: null,
     review: null,
+    notification: null,
     parsed: null,
     textureManifest: []
   });

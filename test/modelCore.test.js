@@ -41,6 +41,19 @@ test("resolves chained texture variables through inherited texture maps", () => 
   assert.equal(resolveTextureReference("#missing", { all: "minecraft:block/stone" }), "#missing");
 });
 
+test("builtin/generated is an engine terminal, not a missing resource-pack file", () => {
+  for (const parent of ["builtin/generated", "minecraft:builtin/generated"]) {
+    const parsed = parseMinecraftModel(JSON.stringify({
+      parent,
+      textures: { layer0: "mcasset:item/amethyst_sword" }
+    }), "amethyst_sword.json", { resourcePackIndex: createResourcePackIndex([]) });
+    assert.equal(parsed.modelKind, "generated_item");
+    assert.deepEqual(parsed.errors, []);
+    assert.equal(parsed.warnings.length, 1);
+    assert.match(parsed.warnings[0], /alpha extrusion/);
+  }
+});
+
 test("normalizes resource-pack paths from selected folders", () => {
   assert.equal(
     normalizeResourcePath("26.1.2/assets/minecraft/models/block/cube_all.json"),

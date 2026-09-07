@@ -26,6 +26,12 @@ You can still upload a single model JSON without a folder using the **Model JSON
 
 For local vanilla testing, select the folder that contains `assets/minecraft/...`, for example a Minecraft version assets extraction with paths such as `assets/minecraft/models/block/cube_all.json` and `assets/minecraft/textures/block/stone.png`.
 
+### Try the pixel-art sword
+
+Load the included `examples/amethyst-sword` folder and select `item / amethyst_sword`. This original 16x16 example has a pale-purple crystal blade, bronze guard, dark wrapped grip, and thin alpha-based extrusion instead of thick cuboids. All material regions are painted in one transparent atlas; no installed Minecraft textures are needed.
+
+For Copilot's in-app canvas, supply `modelPath: "examples/amethyst-sword/assets/mcasset/models/item/amethyst_sword.json"` and `assetsRoot: "examples/amethyst-sword"`. Use absolute paths if the canvas runs in another workspace. To edit/regenerate the atlas, see the [pixel-art authoring recipe](docs/agent-workflow.md#pixel-art-item-authoring).
+
 ## Agent tool usage
 
 Validate and summarize a generated model:
@@ -37,7 +43,7 @@ npm run asset:preview -- ./path/to/model.json --out ./preview-output
 The tool writes:
 
 - `summary.json` with structured status/decision fields, actionable reasons, errors/warnings, unresolved texture references, suggested next steps, and an agent decision payload.
-- `preview.html` with a self-contained review report that summarizes diagnostics, model metadata, next steps, and an approval prompt for user sign-off.
+- `preview.html` with a self-contained diagnostic report. It is not a rendered 3D preview; visual approval requires the interactive canvas or website.
 
 ## MCP server (Copilot Desktop / MCP-capable agent clients)
 
@@ -52,7 +58,7 @@ npm run mcp
 This runs `mcp/server.mjs`, which speaks MCP over stdio and exposes two tools:
 
 - `validate_minecraft_asset` — validates a model JSON file at an explicit `modelPath` (optionally resolving `parent` models/textures against an explicit `assetsRoot`) and returns the structured diagnostic summary described above. Writes no files.
-- `preview_minecraft_asset` — same validation, plus writes `summary.json`/`preview.html` to an explicit `outDir` and returns their absolute paths alongside the summary.
+- `preview_minecraft_asset` — same validation, plus writes `summary.json`/`preview.html` to an explicit `outDir` and returns their absolute paths alongside the summary. Its `canvasPreview` field supplies the canvas ID and absolute inputs to open the actual in-app preview in a supporting Copilot host; the MCP call itself does not open a canvas.
 
 Both tools require explicit paths from the caller; the server never scans arbitrary home/root directories, never shells out, and never executes model file contents.
 
@@ -63,13 +69,15 @@ Example agent workflow over MCP:
 1. Agent calls `preview_minecraft_asset` with `modelPath` (and `assetsRoot` if parent/texture resolution is needed) and an `outDir`.
 2. Agent reads the returned `status`/`decision`/`blockers`/`suggestedNextSteps` fields directly from the tool result (no file parsing required).
 3. If `status` is `fail`, the agent revises the model and calls the tool again.
-4. If `status` is `pass` or `pass_with_warnings`, the agent shares the returned `artifacts.previewPath` with the user (or opens the website) for human visual approval.
+4. If `status` is `pass` or `pass_with_warnings`, the agent opens the returned `canvasPreview` through the host's `open_canvas` tool (adding a new `instanceId`), or loads the model and textures in the website, for human visual approval.
 
 The MCP tools and the browser previewer serve different purposes: the MCP tools give an agent fast, structured, non-visual diagnostics it can act on programmatically, while the browser website remains the human-facing visual review surface for the actual 3D preview.
 
 ## Copilot canvas extension (Copilot CLI / Desktop)
 
 For Copilot CLI/Desktop hosts that support canvases, `.github/extensions/mcasset-preview/extension.mjs` is a project-scoped extension that lets an agent open an in-app **Minecraft asset preview** canvas: it shows the same deterministic diagnostics as the CLI/MCP tools, an actual 3D preview (cuboid elements or generated-item sprites, rendered by the same `src/modelRenderer.js` module the website uses) plus a Human review panel (Accept asset / Request changes), and returns the review as the same structured JSON payload `src/reviewFeedback.js` produces. It is discovered automatically in this repo — no separate install step. See `docs/agent-workflow.md`'s "Copilot canvas extension (in-app preview)" section for the open-input shape, actions (`get_review`, `submit_review`), 3D preview implementation notes, and current limitations (experimental surface, loopback-only server).
+
+In the Copilot canvas, **Accept asset** and **Request changes** save the review and automatically notify the owning agent session, waking it if idle. The UI reports delivery and offers **Retry agent notification** if it fails. This does not commit, merge, or install the asset. A preview embedded in another chat still notifies its original project session; see [notification semantics and limits](docs/agent-workflow.md#automatic-agent-notification).
 
 ## Agent workflow for asset generation loops
 
@@ -79,8 +87,8 @@ Use this loop when an agent is producing Minecraft model files:
 2. Run `npm run asset:preview -- <model.json> --out <dir>`.
 3. Read `<dir>/summary.json`.
 4. If `status` is `fail` (or `decision` is `revise_asset`), use blockers/reasons/suggested steps to revise the model and rerun.
-5. If `status` is `pass` or `pass_with_warnings` (decision `request_user_approval`), ask the user for approval and include warnings when present.
-6. Attach or link `<dir>/preview.html` in the user-facing response so the user can review the generated report.
+5. If `status` is `pass` or `pass_with_warnings`, inspect the actual 3D canvas/website view before requesting human approval; include warnings when present.
+6. Share the diagnostic report as supporting information, not as a replacement for the visible model.
 
 Example:
 
@@ -93,7 +101,7 @@ Decision handling example:
 
 - `fail`: revise asset before requesting approval.
 - `pass_with_warnings`: request approval, but explicitly mention warnings.
-- `pass`: request approval with the preview report.
+- `pass`: request approval with the interactive preview; structural validity alone says nothing about artistic fit.
 
 ## Human-in-the-loop review
 
