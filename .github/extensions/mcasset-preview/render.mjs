@@ -152,12 +152,15 @@ export function renderPage({ instanceId }) {
 
       <section class="card" id="review-card">
         <h2 style="margin-top:0;">Human review</h2>
+        <p class="muted">Submitting a decision notifies the Copilot session that opened this preview. An idle agent resumes; no commit, merge, or installation is authorized.</p>
         <p class="muted" id="review-status">No review recorded yet.</p>
+        <p class="muted" id="notification-status" role="status"></p>
         <textarea id="feedback" placeholder="Feedback for the agent (required when requesting changes)"></textarea>
         <div class="actions">
           <button class="primary" id="approve-btn" type="button">Accept asset</button>
           <button id="changes-btn" type="button">Request changes</button>
           <button id="refresh-btn" type="button">Refresh diagnostics</button>
+          <button id="retry-notification-btn" type="button" hidden>Retry agent notification</button>
         </div>
         <div id="review-result" class="review-summary" style="margin-top:14px;"></div>
       </section>
@@ -176,6 +179,9 @@ export function renderPage({ instanceId }) {
 
       const instanceId = ${escapeJsString(instanceId)};
       const viewer = initViewer(document.getElementById("viewer-canvas"));
+      let submission = null;
+      let notificationId = null;
+      let submitting = false;
 
       function setViewerStatus(message) {
         document.getElementById("viewer-status").textContent = message;
@@ -239,6 +245,15 @@ export function renderPage({ instanceId }) {
         const statusEl = document.getElementById("review-status");
         const resultEl = document.getElementById("review-result");
         const review = state.review;
+        const notification = state.notification;
+        notificationId = notification?.id ?? null;
+        const retryBtn = document.getElementById("retry-notification-btn");
+        retryBtn.hidden = !notification || notification.status === "sent";
+        document.getElementById("notification-status").textContent =
+          notification?.status === "sent" ? "Agent notified. Its response appears in the owning Copilot session." :
+          notification?.status === "failed" ? "Review saved, but the agent was not notified: " + notification.error :
+          notification?.status === "pending" ? "Review saved; delivery is unconfirmed. Retry agent notification." :
+          review ? "This review has no automatic notification record." : "";
 
         if (!review) {
           statusEl.innerHTML = '<span class="pill">No review recorded yet</span>';
@@ -278,7 +293,9 @@ export function renderPage({ instanceId }) {
 
       async function loadState() {
         const res = await fetch("/api/state");
+        if (!res.ok) throw new Error("Could not load preview state (HTTP " + res.status + ").");
         const state = await res.json();
+        submission = null;
         renderDiagnostics(state);
         renderReview(state);
         await renderModel(viewer, state, setViewerStatus).catch((error) => {
@@ -289,40 +306,55 @@ export function renderPage({ instanceId }) {
 
       async function submitReview(action) {
         const feedback = document.getElementById("feedback").value;
-        const approveBtn = document.getElementById("approve-btn");
-        const changesBtn = document.getElementById("changes-btn");
-        approveBtn.disabled = true;
-        changesBtn.disabled = true;
+        const key = JSON.stringify({ action, feedback });
+        if (!submission || submission.key !== key) {
+          submission = { key, notificationId: crypto.randomUUID() };
+        }
+        await postReview("/api/review", { action, feedback, notificationId: submission.notificationId });
+      }
+
+      async function postReview(url, payload) {
+        if (submitting) return;
+        submitting = true;
+        const buttons = ["approve-btn", "changes-btn", "retry-notification-btn", "refresh-btn"].map(id => document.getElementById(id));
+        buttons.forEach(button => button.disabled = true);
+        const banner = document.getElementById("error-banner");
+        banner.style.display = "none";
         try {
-          const res = await fetch("/api/review", {
+          const res = await fetch(url, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action, feedback })
+            body: JSON.stringify(payload)
           });
           const body = await res.json();
-          if (!res.ok) {
-            const banner = document.getElementById("error-banner");
-            banner.style.display = "block";
-            banner.textContent = body.error || "Failed to record review.";
-            return;
+          if (body.review) {
+            renderDiagnostics(body);
+            renderReview(body);
           }
-          renderDiagnostics(body);
-          renderReview(body);
+          if (!res.ok) {
+            throw new Error(body.error || "Could not confirm review delivery.");
+          }
+        } catch (error) {
+          banner.style.display = "block";
+          banner.textContent = error.message + " You can retry the submission; its notification ID is reused.";
         } finally {
-          approveBtn.disabled = false;
-          changesBtn.disabled = false;
+          submitting = false;
+          buttons.forEach(button => button.disabled = false);
         }
       }
 
       document.getElementById("approve-btn").addEventListener("click", () => submitReview("approved"));
       document.getElementById("changes-btn").addEventListener("click", () => submitReview("changes_requested"));
-      document.getElementById("refresh-btn").addEventListener("click", () => loadState());
+      document.getElementById("retry-notification-btn").addEventListener("click", () =>
+        postReview("/api/review/notify", { notificationId }));
+      document.getElementById("refresh-btn").addEventListener("click", () => loadState().catch(showLoadError));
 
-      loadState().catch((error) => {
+      function showLoadError(error) {
         const banner = document.getElementById("error-banner");
         banner.style.display = "block";
         banner.textContent = "Failed to load state: " + error.message;
-      });
+      }
+      loadState().catch(showLoadError);
     </script>
   </body>
 </html>`;

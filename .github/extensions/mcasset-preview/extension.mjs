@@ -28,11 +28,12 @@ import {
   buildStatePayload,
   computeDiagnostics,
   domainKeyFor,
-  loadReview,
-  recordReview,
+  loadReviewRecord,
   resolveTextureFilePath
 } from "./state.mjs";
 import { isVendorRoute, serveVendorAsset } from "./vendorAssets.mjs";
+import { createReviewDelivery, ReviewInputError } from "./reviewDelivery.mjs";
+import { readReviewRequest } from "./reviewHttp.mjs";
 
 
 // Canvas open input: either `modelPath` (validated live, optionally writing
@@ -91,17 +92,6 @@ function instanceOrThrow(instanceId) {
   return entry;
 }
 
-async function readJsonBody(req) {
-  const chunks = [];
-  for await (const chunk of req) {
-    chunks.push(chunk);
-  }
-  if (chunks.length === 0) {
-    return {};
-  }
-  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
-}
-
 function sendJson(res, statusCode, body) {
   const payload = JSON.stringify(body);
   res.writeHead(statusCode, {
@@ -118,13 +108,14 @@ async function currentState(entry) {
   // after fetching /api/state can reuse the same resourcePackIndex instead
   // of re-walking assetsRoot once per texture.
   entry.lastDiagnostics = diagnostics;
-  const review = await loadReview(session.workspacePath, entry.domainKey);
+  const record = await loadReviewRecord(session.workspacePath, entry.domainKey);
   return buildStatePayload({
     instanceId: entry.instanceId,
     domainKey: entry.domainKey,
     input: entry.input,
     diagnostics,
-    review
+    review: record?.review,
+    notification: record?.notification
   });
 }
 
@@ -156,7 +147,7 @@ async function serveTexture(entry, normalizedPath, res) {
 async function startServer(instanceId) {
   const server = createServer((req, res) => {
     handleRequest(instanceId, req, res).catch((error) => {
-      sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
+      sendJson(res, error.statusCode ?? 500, { error: error instanceof Error ? error.message : String(error) });
     });
   });
   // Port 0 = let the OS pick a free ephemeral port. Bind to loopback only —
@@ -205,35 +196,28 @@ async function handleRequest(instanceId, req, res) {
     return;
   }
 
-  if (req.method === "POST" && url.pathname === "/api/review") {
-    let body;
-    try {
-      body = await readJsonBody(req);
-    } catch {
-      sendJson(res, 400, { error: "Request body must be valid JSON." });
-      return;
-    }
-
+  if (req.method === "POST" && ["/api/review", "/api/review/notify"].includes(url.pathname)) {
+    const body = await readReviewRequest(req, entry.url);
     const diagnostics = await computeDiagnostics(entry.input, entry.workingDirectory);
-    try {
-      const review = await recordReview({
-        input: entry.input,
-        workspacePath: session.workspacePath,
-        domainKey: entry.domainKey,
-        action: body?.action,
-        feedback: body?.feedback ?? "",
-        diagnostics
-      });
-      sendJson(res, 200, buildStatePayload({
-        instanceId: entry.instanceId,
+    const record = url.pathname === "/api/review/notify"
+      ? await delivery.retry({ domainKey: entry.domainKey, notificationId: body.notificationId })
+      : await delivery.submit({
         domainKey: entry.domainKey,
         input: entry.input,
+        action: body.action,
+        feedback: body.feedback ?? "",
         diagnostics,
-        review
-      }));
-    } catch (error) {
-      sendJson(res, 400, { error: error instanceof Error ? error.message : String(error) });
-    }
+        notificationId: body.notificationId,
+        notifyAgent: true
+      });
+    const failed = record.notification?.status === "failed";
+    sendJson(res, failed ? 502 : 200, {
+      ...buildStatePayload({
+        instanceId: entry.instanceId, domainKey: entry.domainKey, input: entry.input,
+        diagnostics, review: record.review, notification: record.notification
+      }),
+      ...(failed ? { error: `Review saved, but the agent was not notified: ${record.notification.error}` } : {})
+    });
     return;
   }
 
@@ -286,9 +270,9 @@ async function submitReviewAction(ctx) {
   const diagnostics = await computeDiagnostics(entry.input, entry.workingDirectory);
 
   try {
-    const review = await recordReview({
+    // Agent-originated writes stay pull-only to avoid self-triggering turns.
+    const record = await delivery.submit({
       input: entry.input,
-      workspacePath: session.workspacePath,
       domainKey: entry.domainKey,
       action: input.action,
       feedback: input.feedback ?? "",
@@ -299,10 +283,14 @@ async function submitReviewAction(ctx) {
       domainKey: entry.domainKey,
       input: entry.input,
       diagnostics,
-      review
+      review: record.review,
+      notification: record.notification
     });
   } catch (error) {
-    throw new CanvasError("invalid_review_input", error instanceof Error ? error.message : String(error));
+    throw new CanvasError(
+      error instanceof ReviewInputError ? "invalid_review_input" : "review_save_failed",
+      error instanceof Error ? error.message : String(error)
+    );
   }
 }
 
@@ -325,7 +313,7 @@ const session = await joinSession({
         {
           name: "submit_review",
           description:
-            "Record a human review decision (approve or request changes) for the asset shown in this canvas instance and return the structured review payload, mirroring the browser previewer's Human review panel.",
+            "Record an explicitly supplied review decision and return it. This agent action does not send a notification; the preview UI buttons notify the owning session automatically.",
           inputSchema: SUBMIT_REVIEW_INPUT_SCHEMA,
           handler: submitReviewAction
         }
@@ -334,4 +322,9 @@ const session = await joinSession({
       onClose: closeInstance
     })
   ]
+});
+
+const delivery = createReviewDelivery({
+  workspacePath: session.workspacePath,
+  sendMessage: (message) => session.send(message)
 });

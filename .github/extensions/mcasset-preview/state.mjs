@@ -14,8 +14,8 @@
 // explicit `assetsRoot`; it never scans arbitrary directories on its own.
 
 
-import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { generateAssetReport, validateAssetFile } from "../../../src/assetReport.js";
 import { resolveUploadedTextureKey } from "../../../src/modelCore.js";
@@ -138,22 +138,33 @@ function reviewFilePath(workspacePath, domainKey) {
 const fallbackReviews = new Map();
 
 export async function loadReview(workspacePath, domainKey) {
+  return (await loadReviewRecord(workspacePath, domainKey))?.review ?? null;
+}
+
+export async function loadReviewRecord(workspacePath, domainKey) {
   if (workspacePath) {
     try {
       const raw = await readFile(reviewFilePath(workspacePath, domainKey), "utf8");
-      return JSON.parse(raw).review ?? null;
-    } catch {
-      return null;
+      return JSON.parse(raw);
+    } catch (error) {
+      if (error.code === "ENOENT") return null;
+      throw error;
     }
   }
-  return fallbackReviews.get(domainKey)?.review ?? null;
+  return fallbackReviews.get(domainKey) ?? null;
 }
 
 export async function saveReview(workspacePath, domainKey, record) {
   if (workspacePath) {
     const file = reviewFilePath(workspacePath, domainKey);
     await mkdir(path.dirname(file), { recursive: true });
-    await writeFile(file, `${JSON.stringify(record, null, 2)}\n`);
+    const temporaryFile = `${file}.${randomUUID()}.tmp`;
+    try {
+      await writeFile(temporaryFile, `${JSON.stringify(record, null, 2)}\n`);
+      await rename(temporaryFile, file);
+    } finally {
+      await rm(temporaryFile, { force: true });
+    }
     return;
   }
   fallbackReviews.set(domainKey, record);
@@ -166,7 +177,7 @@ export async function saveReview(workspacePath, domainKey, record) {
  * plain `Error` with a user-facing message on invalid input; callers decide
  * how to surface that (HTTP 400 vs. `CanvasError`).
  */
-export async function recordReview({ input, workspacePath, domainKey, action, feedback, diagnostics }) {
+export async function recordReview({ input, workspacePath, domainKey, action, feedback, diagnostics, notification = null }) {
   const { ok, errors } = validateReviewInput({ action, feedback });
   if (!ok) {
     throw new Error(errors.join(" "));
@@ -186,7 +197,7 @@ export async function recordReview({ input, workspacePath, domainKey, action, fe
     summary: diagnostics.summary
   });
 
-  await saveReview(workspacePath, domainKey, { input, review: payload, updatedAt: payload.timestamp });
+  await saveReview(workspacePath, domainKey, { input, review: payload, notification, updatedAt: payload.timestamp });
   return payload;
 }
 
@@ -196,7 +207,7 @@ export async function recordReview({ input, workspacePath, domainKey, action, fe
  * 3D viewer can render the same model the diagnostics summary describes,
  * fetching any resolved textures from `/api/texture?path=...`.
  */
-export function buildStatePayload({ instanceId, domainKey, input, diagnostics, review }) {
+export function buildStatePayload({ instanceId, domainKey, input, diagnostics, review, notification = null }) {
   return {
     instanceId,
     domainKey,
@@ -205,6 +216,7 @@ export function buildStatePayload({ instanceId, domainKey, input, diagnostics, r
     artifacts: diagnostics.artifacts ?? null,
     diagnosticsError: diagnostics.error ?? null,
     review: review ?? null,
+    notification,
     parsed: diagnostics.parsed ?? null,
     textureManifest: buildTextureManifest(diagnostics.parsed, diagnostics.resourcePackIndex)
   };
