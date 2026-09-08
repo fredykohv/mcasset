@@ -41,6 +41,21 @@ test("resolves chained texture variables through inherited texture maps", () => 
   assert.equal(resolveTextureReference("#missing", { all: "minecraft:block/stone" }), "#missing");
 });
 
+test("child right-hand display supplies its left fallback before inheriting parent contexts", () => {
+  const parent = {
+    parent: "minecraft:builtin/generated",
+    display: { thirdperson_lefthand: { translation: [10, 6, 12] } }
+  };
+  const parsed = parseMinecraftModel(JSON.stringify({
+    parent: "mcasset:item/template",
+    textures: { layer0: "mcasset:item/sword" },
+    display: { thirdperson_righthand: { rotation: [0, -90, 55] } }
+  }), "sword.json", { resourcePackIndex: createResourcePackIndex([
+    { path: "assets/mcasset/models/item/template.json", source: JSON.stringify(parent) }
+  ]) });
+  assert.deepEqual(parsed.model.display.thirdperson_lefthand, { rotation: [0, -90, 55] });
+});
+
 test("builtin/generated is an engine terminal, not a missing resource-pack file", () => {
   for (const parent of ["builtin/generated", "minecraft:builtin/generated"]) {
     const parsed = parseMinecraftModel(JSON.stringify({
@@ -130,6 +145,38 @@ test("resolves parent models and inherits textures and elements", () => {
   assert.equal(parsed.elements.length, 1);
   assert.deepEqual(parsed.textures, { all: "minecraft:block/stone", particle: "#all" });
   assert.deepEqual(parsed.textureReferences, ["minecraft:block/stone"]);
+});
+
+test("inherits display contexts deeply and detects generated items through a parent chain", () => {
+  const resourcePackIndex = createResourcePackIndex([
+    {
+      path: "assets/minecraft/models/item/generated.json",
+      source: JSON.stringify({ parent: "minecraft:builtin/generated" })
+    },
+    {
+      path: "assets/minecraft/models/item/handheld.json",
+      source: JSON.stringify({
+        parent: "minecraft:item/generated",
+        display: {
+          thirdperson_righthand: { rotation: [0, -90, 55], translation: [0, 4, 0.5], scale: [0.85, 0.85, 0.85] }
+        }
+      })
+    }
+  ]);
+  const parsed = parseMinecraftModel(JSON.stringify({
+    parent: "minecraft:item/handheld",
+    textures: { layer0: "mcasset:item/sword" },
+    display: {
+      thirdperson_lefthand: { rotation: [0, 90, -55], translation: [0, 4, 0.5], scale: [0.85, 0.85, 0.85] }
+    }
+  }), "sword.json", {
+    modelPath: "/assets/mcasset/models/item/sword.json",
+    resourcePackIndex
+  });
+
+  assert.equal(parsed.modelKind, "generated_item");
+  assert.deepEqual(Object.keys(parsed.model.display).sort(), ["thirdperson_lefthand", "thirdperson_righthand"]);
+  assert.ok(parsed.parentReferences.includes("minecraft:builtin/generated"));
 });
 
 test("warns when a parent model cannot be resolved from folder context", () => {

@@ -63,7 +63,7 @@ export function createViewer(canvas) {
   const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
   camera.position.set(22, 20, 28);
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true, canvas });
+  const renderer = new THREE.WebGLRenderer({ antialias: true, canvas, preserveDrawingBuffer: true });
   renderer.setPixelRatio(window.devicePixelRatio);
 
   const controls = new OrbitControls(camera, renderer.domElement);
@@ -88,6 +88,29 @@ export function createViewer(canvas) {
     disposeGroup(modelGroup);
     modelGroup = nextGroup;
     scene.add(modelGroup);
+  }
+
+  function frameGroup(group = modelGroup, { view = "front", padding = 1.35 } = {}) {
+    group.updateMatrixWorld(true);
+    const bounds = new THREE.Box3().setFromObject(group);
+    if (bounds.isEmpty()) {
+      return;
+    }
+    const center = bounds.getCenter(new THREE.Vector3());
+    const size = bounds.getSize(new THREE.Vector3());
+    const radius = Math.max(size.x, size.y, size.z) * padding;
+    controls.target.copy(center);
+    const direction = view === "back"
+      ? new THREE.Vector3(0, 0, -1)
+      : view === "side"
+        ? new THREE.Vector3(1, 0, 0)
+        : view === "three-quarter"
+          ? new THREE.Vector3(1, 0, 1).normalize()
+          : new THREE.Vector3(0, 0, 1);
+    camera.position.copy(center).add(direction.multiplyScalar(Math.max(radius, 12)));
+    camera.position.y += size.y * 0.08;
+    camera.lookAt(center);
+    controls.update();
   }
 
   function resize() {
@@ -120,7 +143,7 @@ export function createViewer(canvas) {
     animating = false;
   }
 
-  return { scene, camera, renderer, controls, setModelGroup, resize, stop };
+  return { scene, camera, renderer, controls, setModelGroup, frameGroup, resize, stop };
 }
 
 function disposeGroup(group) {

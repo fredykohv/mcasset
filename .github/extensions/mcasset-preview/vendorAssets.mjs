@@ -47,6 +47,14 @@ const VENDOR_ASSETS = {
     file: path.join(REPO_ROOT, "src/modelRenderer.js"),
     contentType: JS_CONTENT_TYPE
   },
+  "/vendor/equipmentScene.js": {
+    file: path.join(REPO_ROOT, "src/equipmentScene.js"),
+    contentType: JS_CONTENT_TYPE
+  },
+  "/vendor/playerSkin.js": {
+    file: path.join(REPO_ROOT, "src/playerSkin.js"),
+    contentType: JS_CONTENT_TYPE
+  },
   "/app.js": {
     file: path.join(EXTENSION_DIR, "viewerClient.js"),
     contentType: JS_CONTENT_TYPE

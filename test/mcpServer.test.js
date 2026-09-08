@@ -36,6 +36,8 @@ test("lists validate_minecraft_asset and preview_minecraft_asset tools with inpu
   const previewTool = tools.find((tool) => tool.name === "preview_minecraft_asset");
   assert.ok(previewTool.inputSchema.properties.modelPath);
   assert.ok(previewTool.inputSchema.properties.outDir);
+  assert.ok(previewTool.inputSchema.properties.offhandModelPath);
+  assert.ok(previewTool.inputSchema.properties.skinPath);
   assert.deepEqual(previewTool.inputSchema.required.sort(), ["modelPath", "outDir"]);
 
   await client.close();
@@ -170,6 +172,7 @@ test("preview tool hands off explicit absolute inputs to the real canvas, not th
     await server.close();
     await rm(dir, { recursive: true, force: true });
   });
+
   const modelPath = "examples/amethyst-sword/assets/mcasset/models/item/amethyst_sword.json";
   const assetsRoot = "examples/amethyst-sword";
   const outDir = path.relative(process.cwd(), dir);
@@ -188,9 +191,41 @@ test("preview tool hands off explicit absolute inputs to the real canvas, not th
         ...(assets ? { assetsRoot: path.resolve(assets) } : {})
       }
     });
+
     if (assets) {
       assert.match(payload.suggestedNextSteps.join(" "), /mcasset-preview/);
       assert.match(payload.suggestedNextSteps.join(" "), /diagnostic report, not a 3D preview/);
     }
   }
+});
+
+test("preview tool hands off an explicit two-slot equipment scene without changing default compatibility", async (t) => {
+  const { client, server } = await connectedClient();
+  const dir = await makeTempDir();
+  t.after(async () => {
+    await client.close();
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const modelPath = "examples/amethyst-sword/assets/mcasset/models/item/amethyst_sword.json";
+  const offhandModelPath = "examples/spartan-shield/assets/mcasset/models/item/spartan_shield.json";
+  const outDir = path.relative(process.cwd(), dir);
+  const result = await client.callTool({
+    name: "preview_minecraft_asset",
+    arguments: {
+      modelPath,
+      assetsRoot: "examples/amethyst-sword",
+      outDir,
+      sceneMode: "equipment",
+      offhandModelPath,
+      offhandAssetsRoot: "examples/spartan-shield",
+      skinPath: "/tmp/steve.png"
+    }
+  });
+  assert.equal(result.isError, undefined);
+  const payload = JSON.parse(result.content[0].text);
+  assert.equal(payload.canvasPreview.input.sceneMode, "equipment");
+  assert.equal(payload.canvasPreview.input.offhandModelPath, path.resolve(offhandModelPath));
+  assert.equal(payload.canvasPreview.input.offhandAssetsRoot, path.resolve("examples/spartan-shield"));
+  assert.equal(payload.canvasPreview.input.skinPath, "/tmp/steve.png");
 });

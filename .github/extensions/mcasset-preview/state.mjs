@@ -20,6 +20,8 @@ import path from "node:path";
 import { generateAssetReport, validateAssetFile } from "../../../src/assetReport.js";
 import { resolveUploadedTextureKey } from "../../../src/modelCore.js";
 import { createReviewPayload, validateReviewInput } from "../../../src/reviewFeedback.js";
+import { validateSkinDimensions } from "../../../src/playerSkin.js";
+import { readPngDimensions } from "./skinFile.mjs";
 
 /** Resolves a possibly-relative path against the session's working directory. */
 export function resolveInputPath(rawPath, workingDirectory) {
@@ -39,12 +41,86 @@ export function resolveInputPath(rawPath, workingDirectory) {
  * a new canvas instance (after a reload, restart, or a fresh `open_canvas`
  * call) still finds its prior review.
  */
-export function domainKeyFor(input, workingDirectory) {
-  const modelPath = resolveInputPath(input.modelPath, workingDirectory);
-  const assetsRoot = resolveInputPath(input.assetsRoot, workingDirectory);
-  const summaryPath = resolveInputPath(input.summaryPath, workingDirectory);
-  const raw = JSON.stringify({ modelPath, assetsRoot, summaryPath });
+async function contentFingerprint(rawPath, workingDirectory) {
+  const resolvedPath = resolveInputPath(rawPath, workingDirectory);
+  if (!resolvedPath) {
+    return null;
+  }
+  try {
+    const bytes = await readFile(resolvedPath);
+    return createHash("sha256").update(bytes).digest("hex");
+  } catch (error) {
+    return `unreadable:${error.code ?? "unknown"}`;
+  }
+}
+
+export async function domainKeyFor(input, workingDirectory) {
+  const raw = JSON.stringify({
+    sceneMode: input.sceneMode ?? "asset",
+    modelPath: resolveInputPath(input.modelPath, workingDirectory),
+    assetsRoot: resolveInputPath(input.assetsRoot, workingDirectory),
+    summaryPath: resolveInputPath(input.summaryPath, workingDirectory),
+    offhandModelPath: resolveInputPath(input.offhandModelPath, workingDirectory),
+    offhandAssetsRoot: resolveInputPath(input.offhandAssetsRoot, workingDirectory),
+    skinPath: resolveInputPath(input.skinPath, workingDirectory),
+    content: {
+      model: await contentFingerprint(input.modelPath, workingDirectory),
+      summary: await contentFingerprint(input.summaryPath, workingDirectory),
+      offhand: await contentFingerprint(input.offhandModelPath, workingDirectory),
+      skin: await contentFingerprint(input.skinPath, workingDirectory)
+    }
+  });
   return createHash("sha256").update(raw).digest("hex").slice(0, 24);
+}
+
+async function addEquipmentDiagnostics(base, input, workingDirectory) {
+  if ((input.sceneMode ?? "asset") !== "equipment") {
+    return { ...base, equipment: null };
+  }
+
+  const offhandModelPath = resolveInputPath(input.offhandModelPath, workingDirectory);
+  const offhandAssetsRoot = resolveInputPath(input.offhandAssetsRoot, workingDirectory);
+  const skinPath = resolveInputPath(input.skinPath, workingDirectory);
+  let offhand = null;
+  let skin = null;
+  const errors = [];
+
+  if (offhandModelPath) {
+    try {
+      const result = await validateAssetFile({
+        modelPath: offhandModelPath,
+        assetsRoot: offhandAssetsRoot ?? undefined
+      });
+      offhand = { ...result, modelPath: offhandModelPath };
+    } catch (error) {
+      errors.push(`Offhand: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  if (skinPath) {
+    try {
+      const dimensions = await readPngDimensions(skinPath);
+      const validation = validateSkinDimensions(dimensions.width, dimensions.height);
+      if (!validation.ok) {
+        errors.push(validation.error);
+      } else {
+        skin = { path: skinPath, width: validation.width, height: validation.height };
+      }
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  return {
+    ...base,
+    equipment: {
+      sceneMode: "equipment",
+      primaryAsset: "main_hand",
+      offhand,
+      skin,
+      errors
+    }
+  };
 }
 
 /**
@@ -74,16 +150,28 @@ export async function computeDiagnostics(input, workingDirectory) {
           assetsRoot: assetsRoot ?? undefined,
           outDir
         });
-        return { summary, parsed, resourcePackIndex, artifacts, source: "modelPath", error: null };
+        return addEquipmentDiagnostics(
+          { summary, parsed, resourcePackIndex, artifacts, source: "modelPath", error: null },
+          input,
+          workingDirectory
+        );
       }
       const { summary, parsed, resourcePackIndex } = await validateAssetFile({ modelPath, assetsRoot: assetsRoot ?? undefined });
-      return { summary, parsed, resourcePackIndex, artifacts: null, source: "modelPath", error: null };
+      return addEquipmentDiagnostics(
+        { summary, parsed, resourcePackIndex, artifacts: null, source: "modelPath", error: null },
+        input,
+        workingDirectory
+      );
     }
 
     if (summaryPath) {
       const raw = await readFile(summaryPath, "utf8");
       const summary = JSON.parse(raw);
-      return { summary, parsed: null, resourcePackIndex: null, artifacts: null, source: "summaryPath", error: null };
+      return addEquipmentDiagnostics(
+        { summary, parsed: null, resourcePackIndex: null, artifacts: null, source: "summaryPath", error: null },
+        input,
+        workingDirectory
+      );
     }
 
     return {
@@ -194,7 +282,28 @@ export async function recordReview({ input, workspacePath, domainKey, action, fe
     feedback,
     filename,
     modelPath: input.modelPath ?? null,
-    summary: diagnostics.summary
+    summary: diagnostics.summary,
+    context: diagnostics.equipment
+      ? {
+          mode: "equipment",
+          primaryAsset: "main_hand",
+          mainHand: { modelPath: input.modelPath ?? null },
+          offhand: {
+            modelPath: input.offhandModelPath ?? null,
+            validation: diagnostics.equipment.offhand
+              ? {
+                  status: diagnostics.equipment.offhand.summary.status,
+                  decision: diagnostics.equipment.offhand.summary.decision,
+                  errors: diagnostics.equipment.offhand.summary.errors,
+                  warnings: diagnostics.equipment.offhand.summary.warnings,
+                  unresolvedTextureReferences:
+                    diagnostics.equipment.offhand.summary.unresolvedTextureReferences
+                }
+              : null
+          },
+          skin: { path: input.skinPath ?? null }
+        }
+      : { mode: "asset", primaryAsset: "model" }
   });
 
   await saveReview(workspacePath, domainKey, { input, review: payload, notification, updatedAt: payload.timestamp });
@@ -218,7 +327,27 @@ export function buildStatePayload({ instanceId, domainKey, input, diagnostics, r
     review: review ?? null,
     notification,
     parsed: diagnostics.parsed ?? null,
-    textureManifest: buildTextureManifest(diagnostics.parsed, diagnostics.resourcePackIndex)
+    textureManifest: buildTextureManifest(diagnostics.parsed, diagnostics.resourcePackIndex),
+    equipment: diagnostics.equipment
+      ? {
+          sceneMode: "equipment",
+          primaryAsset: "main_hand",
+          errors: diagnostics.equipment.errors,
+          offhand: diagnostics.equipment.offhand
+            ? {
+                parsed: diagnostics.equipment.offhand.parsed,
+                summary: diagnostics.equipment.offhand.summary,
+                textureManifest: buildTextureManifest(
+                  diagnostics.equipment.offhand.parsed,
+                  diagnostics.equipment.offhand.resourcePackIndex
+                )
+              }
+            : null,
+          skin: diagnostics.equipment.skin
+            ? { width: diagnostics.equipment.skin.width, height: diagnostics.equipment.skin.height, available: true }
+            : null
+        }
+      : null
   };
 }
 
