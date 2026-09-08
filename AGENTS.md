@@ -9,6 +9,8 @@ Build a Minecraft asset preview website and an agent-usable feedback tool. The p
 - Start with Minecraft Java Edition block/item model JSON files.
 - Render `elements` cuboids in a browser preview.
 - Render elementless generated item models with `textures.layer0` as transparent sprite previews.
+- Offer an opt-in classic/wide player equipment scene with simultaneous main-hand and offhand item previews; keep asset-only as the default.
+- Accept only explicitly selected local 64x64 or legacy 64x32 classic player skins; otherwise show a neutral mannequin.
 - Show a warning placeholder for elementless particle-only block models; block-entity and special-renderer fidelity remains backlog.
 - Accept a loaded Minecraft `assets` folder or resource-pack folder as browser context for parent/template model and texture resolution.
 - After a folder is loaded, provide an in-browser searchable model list so a user can select an indexed model without reopening the filesystem picker.
@@ -38,7 +40,7 @@ npm run mcp
 
 ## MCP server for agent tool integration
 
-`npm run mcp` starts a local stdio MCP server (`mcp/server.mjs`) exposing `validate_minecraft_asset` and `preview_minecraft_asset` tools that agent clients (e.g. GitHub Copilot Desktop) can call directly, reusing the same parsing/summary logic as the CLI and browser previewer (shared in `src/assetReport.js`, built on `src/modelCore.js`). Both tools require explicit `modelPath`/`assetsRoot`/`outDir` arguments from the caller and never scan arbitrary filesystem locations. See `mcp/mcp.example.json` and the README's "MCP server" section for setup and workflow details. The browser website remains the human-facing visual review surface; MCP tools are for programmatic agent diagnostics.
+`npm run mcp` starts a local stdio MCP server (`mcp/server.mjs`) exposing `validate_minecraft_asset` and `preview_minecraft_asset` tools that agent clients (e.g. GitHub Copilot Desktop) can call directly, reusing the same parsing/summary logic as the CLI and browser previewer (shared in `src/assetReport.js`, built on `src/modelCore.js`). Both tools require explicit paths from the caller and never scan arbitrary filesystem locations. Equipment canvas handoffs may additionally include explicit `offhandModelPath`, `offhandAssetsRoot`, and `skinPath`. See `mcp/mcp.example.json` and the README's "MCP server" section for setup and workflow details. The browser website remains the human-facing visual review surface; MCP tools are for programmatic agent diagnostics.
 
 
 ## Agent feedback loop (required workflow)

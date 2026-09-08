@@ -9,6 +9,7 @@
 
 import * as THREE from "three";
 import { buildModelGroup, createViewer, loadTextureFromUrl } from "./vendor/modelRenderer.js";
+import { buildEquipmentScene } from "./vendor/equipmentScene.js";
 
 /** Creates the Three.js viewer bound to the given <canvas> element. */
 export function initViewer(canvas) {
@@ -39,23 +40,69 @@ export async function renderModel(viewer, state, onStatus) {
     return;
   }
 
-  const manifest = Array.isArray(state.textureManifest) ? state.textureManifest : [];
-  const textureIndex = new Map();
-
-  await Promise.all(
-    manifest
+  const loadManifest = async (manifest, slot) => {
+    const textureIndex = new Map();
+    await Promise.all(
+      manifest
       .filter((entry) => entry && entry.path)
       .map(async (entry) => {
         try {
-          const texture = await loadTextureFromUrl(`/api/texture?path=${encodeURIComponent(entry.path)}`);
+          const texture = await loadTextureFromUrl(
+            `/api/texture?slot=${slot}&path=${encodeURIComponent(entry.path)}`
+          );
           textureIndex.set(entry.path, texture);
-        } catch {
-          // Leave unresolved. buildModelGroup falls back to a flat-color
-          // placeholder for any texture reference with no matching entry,
-          // same as the browser previewer.
+        } catch (error) {
+          setStatus(`Texture load failed for ${entry.reference}: ${error.message}`);
         }
       })
-  );
+    );
+    return textureIndex;
+  };
+
+  const manifest = Array.isArray(state.textureManifest) ? state.textureManifest : [];
+  const textureIndex = await loadManifest(manifest, "main");
+
+  if (state.equipment?.sceneMode === "equipment") {
+    const offhandManifest = state.equipment.offhand?.textureManifest ?? [];
+    const offhandTextures = await loadManifest(offhandManifest, "offhand");
+    let skinTexture = null;
+    if (state.equipment.skin?.available) {
+      skinTexture = await loadTextureFromUrl("/api/skin");
+    }
+    const group = buildEquipmentScene({
+      mainHand: { parsed: state.parsed, textureIndex },
+      offhand: state.equipment.offhand
+        ? { parsed: state.equipment.offhand.parsed, textureIndex: offhandTextures }
+        : null,
+      skinTexture,
+      skinDimensions: state.equipment.skin
+    });
+    viewer.setModelGroup(group);
+    viewer.frameGroup(group, { view: "front" });
+    const issues = group.userData.equipmentDiagnostics.flatMap((entry) =>
+      entry.issues.map((issue) => `${entry.slot}: ${issue.message}`)
+    );
+    const errors = state.equipment.errors ?? [];
+    const offhandSummary = state.equipment.offhand?.summary;
+    const notes = [
+      state.equipment.skin ? "Local classic skin loaded." : "Neutral mannequin shown.",
+      state.equipment.offhand ? "Both equipment slots rendered." : "Offhand is empty.",
+      ...(offhandSummary
+        ? [
+            `Offhand validation: ${offhandSummary.status}.`,
+            ...offhandSummary.errors,
+            ...offhandSummary.warnings,
+            ...offhandSummary.unresolvedTextureReferences.map((reference) =>
+              `Offhand unresolved texture: ${reference}`
+            )
+          ]
+        : []),
+      ...issues,
+      ...errors
+    ];
+    setStatus(notes.join(" "));
+    return;
+  }
 
   const group = buildModelGroup(state.parsed, { textureIndex });
   viewer.setModelGroup(group);

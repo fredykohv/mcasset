@@ -16,6 +16,7 @@ import {
   resolveUploadedTexture
 } from "./modelCore.js";
 import { buildModelGroup, createViewer, loadTextureFromUrl } from "./modelRenderer.js";
+import { buildEquipmentScene, validateSkinDimensions } from "./equipmentScene.js";
 import { createReviewPayload, serializeReviewPayload, validateReviewInput } from "./reviewFeedback.js";
 
 const assetFolderInput = document.querySelector("#asset-folder");
@@ -39,6 +40,11 @@ const reviewResultLabelNode = document.querySelector("#review-result-label");
 const reviewResultJsonNode = document.querySelector("#review-result-json");
 const reviewCopyButton = document.querySelector("#review-copy");
 const reviewDownloadButton = document.querySelector("#review-download");
+const equipmentModeInput = document.querySelector("#equipment-mode");
+const offhandModelInput = document.querySelector("#offhand-model-file");
+const skinInput = document.querySelector("#skin-file");
+const equipmentStatusNode = document.querySelector("#equipment-status");
+const viewButtons = [...document.querySelectorAll("[data-view]")];
 
 const MODEL_LIST_LIMIT = 200;
 
@@ -56,6 +62,15 @@ let selectedModelPath = null;
 let ambiguousModelBaseNames = new Set();
 let currentSummary = null;
 let lastReviewPayload = null;
+let currentParsed = null;
+let offhandModelText = null;
+let offhandFilename = null;
+let offhandModelPath = null;
+let offhandParsed = null;
+let offhandSummary = null;
+let skinTexture = null;
+let skinDimensions = null;
+let skinFilename = null;
 
 assetFolderInput.addEventListener("change", async (event) => {
   const files = [...(event.target.files ?? [])];
@@ -100,6 +115,65 @@ assetFolderInput.addEventListener("change", async (event) => {
   }
 });
 
+equipmentModeInput.addEventListener("change", () => {
+  renderActiveScene();
+  resetReviewPanel();
+});
+
+offhandModelInput.addEventListener("change", async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) {
+    offhandModelText = null;
+    offhandFilename = null;
+    offhandModelPath = null;
+    offhandParsed = null;
+    offhandSummary = null;
+  } else {
+    offhandModelText = await file.text();
+    offhandFilename = file.name;
+    offhandModelPath = file.webkitRelativePath || findModelPathForFilename(file.name, resourcePackIndex) || file.name;
+    parseOffhandModel();
+  }
+  renderActiveScene();
+  resetReviewPanel();
+});
+
+skinInput.addEventListener("change", async (event) => {
+  const file = event.target.files?.[0];
+  skinTexture = null;
+  skinDimensions = null;
+  skinFilename = null;
+  if (file) {
+    try {
+      const texture = await loadTextureFile(file);
+      const validation = validateSkinDimensions(texture.image?.width, texture.image?.height);
+      if (!validation.ok) {
+        renderActiveScene();
+        equipmentStatusNode.textContent = validation.error;
+        resetReviewPanel();
+        return;
+      }
+      skinTexture = texture;
+      skinDimensions = { width: validation.width, height: validation.height };
+      skinFilename = file.name;
+    } catch (error) {
+      renderActiveScene();
+      equipmentStatusNode.textContent =
+        `Could not decode "${file.name}" as a player skin PNG: ${error instanceof Error ? error.message : String(error)}`;
+      resetReviewPanel();
+      return;
+    }
+  }
+  renderActiveScene();
+  resetReviewPanel();
+});
+
+viewButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    viewer.frameGroup(undefined, { view: button.dataset.view });
+  });
+});
+
 modelSearchInput.addEventListener("input", (event) => {
   renderModelList(event.target.value);
 });
@@ -136,6 +210,10 @@ textureInput.addEventListener("change", async (event) => {
 
   if (currentModelText) {
     renderCurrentModel();
+  }
+  if (offhandModelText) {
+    parseOffhandModel();
+    renderActiveScene();
   }
 });
 
@@ -226,14 +304,62 @@ function renderCurrentModel() {
   const resolvedTextureReferences = collectResolvedTextureReferences(parsed);
   const summary = createPreviewSummary(parsed, resolvedTextureReferences);
   currentSummary = summary;
+  currentParsed = parsed;
 
-  viewer.setModelGroup(buildModelGroup(parsed, { textureIndex: textureIndex() }));
+  renderActiveScene();
   renderSummary(summary);
   resetReviewPanel();
 
   const statusFeedback = createStatusFeedback(summary);
   statusNode.className = statusFeedback.className;
   statusNode.textContent = statusFeedback.message;
+}
+
+function parseOffhandModel() {
+  offhandParsed = parseMinecraftModel(offhandModelText, offhandFilename, {
+    modelPath: offhandModelPath,
+    resourcePackIndex
+  });
+  offhandSummary = createPreviewSummary(offhandParsed, collectResolvedTextureReferences(offhandParsed));
+}
+
+function renderActiveScene() {
+  if (!currentParsed) {
+    return;
+  }
+  if (!equipmentModeInput.checked) {
+    viewer.setModelGroup(buildModelGroup(currentParsed, { textureIndex: textureIndex() }));
+    equipmentStatusNode.textContent = "Equipment view is off. Asset-only preview remains the default.";
+    return;
+  }
+
+  const group = buildEquipmentScene({
+    mainHand: { parsed: currentParsed, textureIndex: textureIndex() },
+    offhand: offhandParsed ? { parsed: offhandParsed, textureIndex: textureIndex() } : null,
+    skinTexture,
+    skinDimensions
+  });
+  viewer.setModelGroup(group);
+  viewer.frameGroup(group, { view: "front" });
+
+  const transformIssues = group.userData.equipmentDiagnostics.flatMap((entry) =>
+    entry.issues.map((issue) => `${entry.slot}: ${issue.message}`)
+  );
+  const offhandProblems = offhandSummary
+    ? [
+        `Offhand validation: ${offhandSummary.status}.`,
+        ...offhandSummary.errors,
+        ...offhandSummary.warnings,
+        ...offhandSummary.unresolvedTextureReferences.map((item) => `Unresolved texture: ${item}`)
+      ]
+    : [];
+  const notes = [
+    skinFilename ? `Skin: ${skinFilename}.` : "Neutral mannequin shown; no skin selected.",
+    offhandParsed ? `Offhand: ${offhandFilename}.` : "Offhand is empty.",
+    ...transformIssues,
+    ...offhandProblems
+  ];
+  equipmentStatusNode.textContent = notes.join(" ");
 }
 
 /**
@@ -249,7 +375,9 @@ function resetReviewPanel() {
   reviewResultNode.hidden = true;
   reviewResultJsonNode.textContent = "";
   reviewPanel.hidden = false;
-  reviewStatusNode.textContent = `Reviewing "${currentFilename ?? "this model"}". No decision recorded yet.`;
+  reviewStatusNode.textContent = equipmentModeInput.checked
+    ? `Reviewing equipment scene: main hand "${currentFilename ?? "unknown"}", offhand "${offhandFilename ?? "empty"}", skin "${skinFilename ?? "neutral mannequin"}". No decision recorded yet.`
+    : `Reviewing asset "${currentFilename ?? "this model"}". No decision recorded yet.`;
 }
 
 function handleReviewDecision(action) {
@@ -269,7 +397,28 @@ function handleReviewDecision(action) {
     feedback,
     filename: currentFilename,
     modelPath: currentModelPath,
-    summary: currentSummary
+    summary: currentSummary,
+    context: equipmentModeInput.checked
+      ? {
+          mode: "equipment",
+          primaryAsset: "main_hand",
+          mainHand: { filename: currentFilename, modelPath: currentModelPath },
+          offhand: {
+            filename: offhandFilename,
+            modelPath: offhandModelPath,
+            validation: offhandSummary
+              ? {
+                  status: offhandSummary.status,
+                  decision: offhandSummary.decision,
+                  errors: offhandSummary.errors,
+                  warnings: offhandSummary.warnings,
+                  unresolvedTextureReferences: offhandSummary.unresolvedTextureReferences
+                }
+              : null
+          },
+          skin: { filename: skinFilename }
+        }
+      : { mode: "asset", primaryAsset: "model" }
   });
 
   lastReviewPayload = payload;
@@ -376,4 +525,3 @@ function renderSummary(summary) {
     })
   );
 }
-

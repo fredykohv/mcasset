@@ -34,7 +34,7 @@ export function parseMinecraftModel(source, filename = "model.json", options = {
   });
   const effectiveModel = parentResolution.model;
   const textures = normalizeTextures(effectiveModel?.textures, warnings);
-  const modelKind = determineModelKind(effectiveModel, textures);
+  const modelKind = determineModelKind(effectiveModel, textures, parentResolution.parentReferences);
   const elements = normalizeElements(effectiveModel?.elements, warnings, errors, { allowMissingElements: modelKind !== "cuboid" });
 
   if (modelKind === "generated_item") {
@@ -58,6 +58,7 @@ export function parseMinecraftModel(source, filename = "model.json", options = {
     model: effectiveModel,
     sourceModel: model,
     parentChain: parentResolution.parentChain,
+    parentReferences: parentResolution.parentReferences,
     modelKind,
     elements,
     textures,
@@ -460,7 +461,11 @@ function modelIdFromPath(modelPath) {
 
 function resolveParentModel(model, context) {
   if (!context.modelIndex || !model || typeof model !== "object" || Array.isArray(model)) {
-    return { model, parentChain: [] };
+    return {
+      model,
+      parentChain: [],
+      parentReferences: typeof model?.parent === "string" ? [model.parent] : []
+    };
   }
 
   return resolveParentModelRecursive(model, context.modelPath, context, []);
@@ -469,34 +474,41 @@ function resolveParentModel(model, context) {
 function resolveParentModelRecursive(model, modelPath, context, stack) {
   const parent = model?.parent;
   if (typeof parent !== "string" || parent === "builtin/generated" || parent === "minecraft:builtin/generated") {
-    return { model, parentChain: [] };
+    return { model, parentChain: [], parentReferences: typeof parent === "string" ? [parent] : [] };
   }
 
   const parentPath = resolveParentPath(parent, modelPath, context.modelIndex);
   if (!parentPath) {
     context.warnings.push(`Parent model could not be resolved: ${parent}`);
-    return { model, parentChain: [] };
+    return { model, parentChain: [], parentReferences: [parent] };
   }
 
   if (stack.includes(parentPath)) {
     context.errors.push(`Parent model cycle detected: ${[...stack, parentPath].join(" -> ")}`);
-    return { model, parentChain: [parentPath] };
+    return { model, parentChain: [parentPath], parentReferences: [parent] };
   }
 
   const parentModel = readIndexedModel(parentPath, context.modelIndex, context.warnings);
   if (!parentModel) {
     context.warnings.push(`Parent model could not be read: ${parent}`);
-    return { model, parentChain: [parentPath] };
+    return { model, parentChain: [parentPath], parentReferences: [parent] };
   }
 
   const resolvedParent = resolveParentModelRecursive(parentModel, parentPath, context, [...stack, parentPath]);
   const parentChain = [parentPath, ...resolvedParent.parentChain];
+  const parentReferences = [parent, ...resolvedParent.parentReferences];
   const merged = {
     ...resolvedParent.model,
     ...model,
     textures: {
       ...normalizeRawTextures(resolvedParent.model?.textures),
       ...normalizeRawTextures(model.textures)
+    },
+    display: {
+      ...(resolvedParent.model?.display && typeof resolvedParent.model.display === "object"
+        ? resolvedParent.model.display
+        : {}),
+      ...(model.display && typeof model.display === "object" ? model.display : {})
     }
   };
 
@@ -504,7 +516,7 @@ function resolveParentModelRecursive(model, modelPath, context, stack) {
     merged.elements = resolvedParent.model.elements;
   }
 
-  return { model: merged, parentChain };
+  return { model: merged, parentChain, parentReferences };
 }
 
 function resolveParentPath(parent, modelPath, modelIndex) {
@@ -687,10 +699,14 @@ function collectTextureReferences(elements, textures, modelKind) {
   return [...references].sort();
 }
 
-function determineModelKind(model, textures) {
+function determineModelKind(model, textures, parentReferences = []) {
   const hasElements = Array.isArray(model?.elements) && model.elements.length > 0;
 
-  if (!hasElements && isGeneratedItemParent(model?.parent) && typeof textures.layer0 === "string") {
+  if (
+    !hasElements &&
+    [model?.parent, ...parentReferences].some(isGeneratedItemParent) &&
+    typeof textures.layer0 === "string"
+  ) {
     return "generated_item";
   }
 

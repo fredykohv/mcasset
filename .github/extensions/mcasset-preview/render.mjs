@@ -143,6 +143,11 @@ export function renderPage({ instanceId }) {
         <div class="viewer-wrap">
           <canvas id="viewer-canvas"></canvas>
         </div>
+        <div class="actions">
+          <button type="button" data-view="front">Front</button>
+          <button type="button" data-view="side">Side</button>
+          <button type="button" data-view="back">Back</button>
+        </div>
         <p class="muted" id="viewer-status">Loading 3D preview&hellip;</p>
       </section>
 
@@ -157,7 +162,7 @@ export function renderPage({ instanceId }) {
         <p class="muted" id="notification-status" role="status"></p>
         <textarea id="feedback" placeholder="Feedback for the agent (required when requesting changes)"></textarea>
         <div class="actions">
-          <button class="primary" id="approve-btn" type="button">Accept asset</button>
+          <button class="primary" id="approve-btn" type="button">Accept current preview</button>
           <button id="changes-btn" type="button">Request changes</button>
           <button id="refresh-btn" type="button">Refresh diagnostics</button>
           <button id="retry-notification-btn" type="button" hidden>Retry agent notification</button>
@@ -182,6 +187,10 @@ export function renderPage({ instanceId }) {
       let submission = null;
       let notificationId = null;
       let submitting = false;
+
+      document.querySelectorAll("[data-view]").forEach((button) => {
+        button.addEventListener("click", () => viewer.frameGroup(undefined, { view: button.dataset.view }));
+      });
 
       function setViewerStatus(message) {
         document.getElementById("viewer-status").textContent = message;
@@ -210,7 +219,9 @@ export function renderPage({ instanceId }) {
         const card = document.getElementById("diagnostics-card");
 
         const label = state.input.modelPath || state.input.summaryPath || "(no path supplied)";
-        subtitle.textContent = label;
+        subtitle.textContent = state.equipment
+          ? "Equipment scene (primary: main hand): " + label
+          : "Asset-only preview: " + label;
 
         if (state.diagnosticsError) {
           banner.style.display = "block";
@@ -237,6 +248,15 @@ export function renderPage({ instanceId }) {
           '<tr><th>Unresolved textures</th><td>' + renderList(summary.unresolvedTextureReferences) + '</td></tr>' +
           '<tr><th>Errors</th><td>' + renderList(summary.errors) + '</td></tr>' +
           '<tr><th>Warnings</th><td>' + renderList(summary.warnings) + '</td></tr>' +
+          (state.equipment
+            ? '<tr><th>Equipment scene errors</th><td>' + renderList(state.equipment.errors) + '</td></tr>' +
+              '<tr><th>Offhand</th><td>' + escapeHtml(state.input.offhandModelPath || "Empty") + '</td></tr>' +
+              '<tr><th>Offhand status</th><td>' + escapeHtml(state.equipment.offhand?.summary?.status || "Not loaded") + '</td></tr>' +
+              '<tr><th>Offhand errors</th><td>' + renderList(state.equipment.offhand?.summary?.errors) + '</td></tr>' +
+              '<tr><th>Offhand warnings</th><td>' + renderList(state.equipment.offhand?.summary?.warnings) + '</td></tr>' +
+              '<tr><th>Offhand unresolved textures</th><td>' + renderList(state.equipment.offhand?.summary?.unresolvedTextureReferences) + '</td></tr>' +
+              '<tr><th>Skin</th><td>' + escapeHtml(state.input.skinPath || "Neutral mannequin") + '</td></tr>'
+            : '') +
           '<tr><th>Suggested next steps</th><td>' + renderList(summary.suggestedNextSteps) + '</td></tr>' +
           '</tbody></table>';
       }

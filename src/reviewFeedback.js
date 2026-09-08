@@ -44,6 +44,7 @@ export function createReviewPayload({
   filename = null,
   modelPath = null,
   summary = null,
+  context = null,
   timestamp = new Date().toISOString()
 }) {
   const { ok, errors } = validateReviewInput({ action, feedback });
@@ -58,6 +59,7 @@ export function createReviewPayload({
       filename: filename ?? null,
       modelPath: modelPath ?? null
     },
+    context: context && typeof context === "object" ? context : { mode: "asset" },
     validation: summarizeValidationForPayload(summary),
     timestamp
   };

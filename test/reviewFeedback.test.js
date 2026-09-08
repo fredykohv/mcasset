@@ -60,6 +60,7 @@ test("createReviewPayload builds a structured approval payload", () => {
       filename: "oak_table.json",
       modelPath: "minecraft/models/item/oak_table.json"
     },
+    context: { mode: "asset" },
     validation: {
       status: "pass",
       decision: "request_user_approval",
@@ -69,6 +70,23 @@ test("createReviewPayload builds a structured approval payload", () => {
     },
     timestamp
   });
+});
+
+test("createReviewPayload identifies an equipment scene separately from asset-only review", () => {
+  const context = {
+    mode: "equipment",
+    primaryAsset: "main_hand",
+    mainHand: { modelPath: "sword.json" },
+    offhand: { modelPath: "shield.json" },
+    skin: { filename: "local-skin.png" }
+  };
+  const payload = createReviewPayload({
+    action: REVIEW_ACTIONS.APPROVED,
+    filename: "sword.json",
+    modelPath: "sword.json",
+    context
+  });
+  assert.deepEqual(payload.context, context);
 });
 
 test("createReviewPayload builds a structured changes_requested payload", () => {

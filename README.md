@@ -24,6 +24,14 @@ Once a folder is loaded, an **Indexed models** panel appears: search by path or 
 
 You can still upload a single model JSON without a folder using the **Model JSON (manual upload)** field. Additional texture uploads remain available for quick tests or overrides. If the summary shows `Unresolved textures` as anything other than `None`, load the containing assets/resource-pack folder or upload the listed texture file.
 
+### Classic player equipment preview
+
+The website's asset-only orbit view remains the default. Enable **Preview on classic player (opt in)** to place the selected model in the main hand of a shared classic/wide player rig (4px arms, 32 model units tall). An additional model JSON can be assigned to the offhand at the same time. Use **Front**, **Side**, and **Back** or orbit freely to inspect scale, orientation, grip position, and clipping.
+
+The player is a clearly labelled neutral mannequin unless you explicitly select a local PNG skin. Supported skin atlases are classic/wide `64x64` and legacy `64x32`; slim/Alex geometry is not supported. mcasset never downloads a skin and does not bundle or copy Minecraft's Steve texture.
+
+Equipment placement applies authored `display.thirdperson_righthand` and `display.thirdperson_lefthand` transforms. If the left-hand transform is missing, mcasset mirrors the authored right-hand transform; if no usable hand transform exists, it visibly reports and uses the vanilla handheld fallback. This is a deliberate static hand-mount approximation, not exact game pose or renderer parity. A good external preview does not prove the item is registered, installable, equippable, or functional in-game.
+
 For local vanilla testing, select the folder that contains `assets/minecraft/...`, for example a Minecraft version assets extraction with paths such as `assets/minecraft/models/block/cube_all.json` and `assets/minecraft/textures/block/stone.png`.
 
 ### Try the pixel-art sword
@@ -60,6 +68,8 @@ This runs `mcp/server.mjs`, which speaks MCP over stdio and exposes two tools:
 - `validate_minecraft_asset` — validates a model JSON file at an explicit `modelPath` (optionally resolving `parent` models/textures against an explicit `assetsRoot`) and returns the structured diagnostic summary described above. Writes no files.
 - `preview_minecraft_asset` — same validation, plus writes `summary.json`/`preview.html` to an explicit `outDir` and returns their absolute paths alongside the summary. Its `canvasPreview` field supplies the canvas ID and absolute inputs to open the actual in-app preview in a supporting Copilot host; the MCP call itself does not open a canvas.
 
+For an equipment handoff, add `sceneMode: "equipment"` and optionally `offhandModelPath`, `offhandAssetsRoot`, and `skinPath`. All are explicit local paths; the primary `modelPath` is the main-hand asset. Existing asset-only calls remain unchanged.
+
 Both tools require explicit paths from the caller; the server never scans arbitrary home/root directories, never shells out, and never executes model file contents.
 
 To register the server with an MCP-capable client, see `mcp/mcp.example.json` for an example `mcpServers` entry. The exact settings file or UI location for registering MCP servers varies by app and version — consult your client's MCP documentation for where to add it.
@@ -75,7 +85,7 @@ The MCP tools and the browser previewer serve different purposes: the MCP tools 
 
 ## Copilot canvas extension (Copilot CLI / Desktop)
 
-For Copilot CLI/Desktop hosts that support canvases, `.github/extensions/mcasset-preview/extension.mjs` is a project-scoped extension that lets an agent open an in-app **Minecraft asset preview** canvas: it shows the same deterministic diagnostics as the CLI/MCP tools, an actual 3D preview (cuboid elements or generated-item sprites, rendered by the same `src/modelRenderer.js` module the website uses) plus a Human review panel (Accept asset / Request changes), and returns the review as the same structured JSON payload `src/reviewFeedback.js` produces. It is discovered automatically in this repo — no separate install step. See `docs/agent-workflow.md`'s "Copilot canvas extension (in-app preview)" section for the open-input shape, actions (`get_review`, `submit_review`), 3D preview implementation notes, and current limitations (experimental surface, loopback-only server).
+For Copilot CLI/Desktop hosts that support canvases, `.github/extensions/mcasset-preview/extension.mjs` is a project-scoped extension that lets an agent open an in-app **Minecraft asset preview** canvas: it shows the same deterministic diagnostics as the CLI/MCP tools, an actual asset-only or opt-in classic-player equipment preview rendered by the shared `src/modelRenderer.js` and `src/equipmentScene.js` modules, plus a Human review panel (Accept current preview / Request changes). It returns the review as the same structured JSON payload `src/reviewFeedback.js` produces. It is discovered automatically in this repo — no separate install step. See `docs/agent-workflow.md`'s "Copilot canvas extension (in-app preview)" section for the open-input shape, actions (`get_review`, `submit_review`), 3D preview implementation notes, and current limitations (experimental surface, loopback-only server).
 
 In the Copilot canvas, **Accept asset** and **Request changes** save the review and automatically notify the owning agent session, waking it if idle. The UI reports delivery and offers **Retry agent notification** if it fails. This does not commit, merge, or install the asset. A preview embedded in another chat still notifies its original project session; see [notification semantics and limits](docs/agent-workflow.md#automatic-agent-notification).
 
@@ -117,6 +127,7 @@ Every decision is captured as a structured JSON payload (not just visible UI tex
   "action": "approved",
   "userFeedback": "Looks great",
   "model": { "filename": "oak_table.json", "modelPath": "minecraft/models/item/oak_table.json" },
+  "context": { "mode": "asset", "primaryAsset": "model" },
   "validation": { "status": "pass", "decision": "request_user_approval", "errors": [], "warnings": [], "unresolvedTextureReferences": [] },
   "timestamp": "2024-01-01T00:00:00.000Z"
 }
@@ -124,7 +135,7 @@ Every decision is captured as a structured JSON payload (not just visible UI tex
 
 The panel shows the JSON payload with **Copy JSON** and **Download JSON** buttons so a user can hand it to an agent without any backend, account, or database — everything stays client-side in the browser.
 
-Loading a different model (via the model browser, manual upload, or a newly loaded folder resolving the current file) clears the prior decision and feedback text, so a stale approval can never be mistaken for approval of a different model.
+Loading a different model (via the model browser, manual upload, or a newly loaded folder resolving the current file) clears the prior decision and feedback text. Switching equipment mode, offhand model, or skin also creates a distinct review context and clears the visible browser decision, so an asset-only approval is never silently reused for a new equipment scene.
 
 ### How an agent should consume the exported payload
 
@@ -144,12 +155,15 @@ mcasset currently provides deterministic checks for JSON/model structure and tex
 - Elementless particle-only placeholder previews for special block models with `textures.particle`
 - Parent/template lookup from a loaded assets/resource-pack folder
 - Inherited parent textures and parent `elements` when the child has none
+- Inherited display contexts and generated-item detection through resolved parent chains
+- Opt-in classic/wide player rig with simultaneous main-hand and offhand item models
+- Authored third-person hand display transforms with visible mirror/fallback diagnostics
 - Basic per-face texture reference resolution
 - Model-level `textures`
 - Warnings for malformed or out-of-bounds coordinates
 
 Uploaded item textures can be matched by basename or common resource-pack paths such as `item/name.png`, `textures/item/name.png`, and `assets/minecraft/textures/item/name.png`.
 
-Generated item previews now approximate thickness by extruding opaque texture pixels from `layer0` alpha, but this remains a preview approximation and not exact Minecraft item renderer parity (display transforms, lighting behavior, and other renderer details still differ).
+Generated item previews approximate thickness by extruding opaque texture pixels from `layer0` alpha. Equipment mode applies third-person display transforms to a static hand mount, but pose, transform order, lighting, and grip behavior remain approximations rather than exact Minecraft renderer parity.
 
-Advanced Minecraft features such as block-entity and special-renderer emulation, display transforms, rotations, tinting, UV remapping, and full Minecraft rendering-engine parity are intentionally left for future iterations.
+Advanced Minecraft features such as block-entity and special-renderer emulation, animation, armor/head equipment, item registration, tinting, UV remapping, and full Minecraft rendering-engine parity are intentionally left for future iterations.

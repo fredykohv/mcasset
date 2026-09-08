@@ -58,6 +58,23 @@ const OPEN_INPUT_SCHEMA = {
     outDir: {
       type: "string",
       description: "Optional directory to write summary.json/preview.html artifacts into (only used together with modelPath), mirroring npm run asset:preview."
+    },
+    sceneMode: {
+      type: "string",
+      enum: ["asset", "equipment"],
+      description: "Optional preview mode. Asset-only remains the default; equipment adds the classic player rig."
+    },
+    offhandModelPath: {
+      type: "string",
+      description: "Explicit offhand model path used only in equipment mode."
+    },
+    offhandAssetsRoot: {
+      type: "string",
+      description: "Optional explicit resource-pack root for the offhand model."
+    },
+    skinPath: {
+      type: "string",
+      description: "Optional explicit local 64x64 or legacy 64x32 classic/wide player skin PNG. No remote downloads."
     }
   },
   anyOf: [{ required: ["modelPath"] }, { required: ["summaryPath"] }],
@@ -127,9 +144,12 @@ async function currentState(entry) {
  * directly, only files this extension already enumerated while indexing
  * that assetsRoot.
  */
-async function serveTexture(entry, normalizedPath, res) {
+async function serveTexture(entry, normalizedPath, slot, res) {
   const diagnostics = entry.lastDiagnostics ?? (await computeDiagnostics(entry.input, entry.workingDirectory));
-  const fullPath = resolveTextureFilePath(diagnostics.resourcePackIndex, normalizedPath);
+  const resourcePackIndex = slot === "offhand"
+    ? diagnostics.equipment?.offhand?.resourcePackIndex
+    : diagnostics.resourcePackIndex;
+  const fullPath = resolveTextureFilePath(resourcePackIndex, normalizedPath);
   if (!fullPath) {
     sendJson(res, 404, { error: `No indexed texture file for "${normalizedPath}".` });
     return;
@@ -142,6 +162,18 @@ async function serveTexture(entry, normalizedPath, res) {
   } catch (error) {
     sendJson(res, 404, { error: error instanceof Error ? error.message : String(error) });
   }
+}
+
+async function serveSkin(entry, res) {
+  const diagnostics = entry.lastDiagnostics ?? (await computeDiagnostics(entry.input, entry.workingDirectory));
+  const fullPath = diagnostics.equipment?.skin?.path;
+  if (!fullPath) {
+    sendJson(res, 404, { error: "No validated skin is available for this canvas input." });
+    return;
+  }
+  const bytes = await readFile(fullPath);
+  res.writeHead(200, { "Content-Type": "image/png", "Content-Length": bytes.length });
+  res.end(bytes);
 }
 
 async function startServer(instanceId) {
@@ -192,7 +224,12 @@ async function handleRequest(instanceId, req, res) {
       sendJson(res, 400, { error: "Query parameter \"path\" is required." });
       return;
     }
-    await serveTexture(entry, texturePath, res);
+    await serveTexture(entry, texturePath, url.searchParams.get("slot") ?? "main", res);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/skin") {
+    await serveSkin(entry, res);
     return;
   }
 
@@ -227,7 +264,7 @@ async function handleRequest(instanceId, req, res) {
 async function openInstance(ctx) {
   const input = ctx.input && typeof ctx.input === "object" ? ctx.input : {};
   const workingDirectory = ctx.session?.workingDirectory;
-  const domainKey = domainKeyFor(input, workingDirectory);
+  const domainKey = await domainKeyFor(input, workingDirectory);
 
   let entry = instances.get(ctx.instanceId);
   if (!entry) {
@@ -243,10 +280,11 @@ async function openInstance(ctx) {
   entry.domainKey = domainKey;
 
   const label = input.modelPath || input.summaryPath;
+  const sceneLabel = input.sceneMode === "equipment" ? "equipment scene" : "asset";
   await session.log(`mcasset-preview: opened instance "${ctx.instanceId}"${label ? ` for ${label}` : ""}.`, { ephemeral: true });
 
   return {
-    title: label ? `Asset preview: ${label}` : "Minecraft asset preview",
+    title: label ? `${sceneLabel === "equipment scene" ? "Equipment" : "Asset"} preview: ${label}` : "Minecraft asset preview",
     url: entry.url
   };
 }

@@ -48,6 +48,11 @@ const outDirSchema = z
       "preview.html) should be written. The directory is created if it does not exist."
   );
 
+const sceneModeSchema = z.enum(["asset", "equipment"]).optional().describe(
+  "Optional preview mode. Asset-only remains the default; equipment adds a classic player rig."
+);
+const optionalPathSchema = (description) => z.string().min(1).optional().describe(description);
+
 function toToolError(error) {
   return {
     isError: true,
@@ -126,10 +131,14 @@ export function createMcAssetServer() {
       inputSchema: {
         modelPath: modelPathSchema,
         assetsRoot: assetsRootSchema,
-        outDir: outDirSchema
+        outDir: outDirSchema,
+        sceneMode: sceneModeSchema,
+        offhandModelPath: optionalPathSchema("Explicit offhand model path for equipment mode."),
+        offhandAssetsRoot: optionalPathSchema("Optional explicit resource-pack root for the offhand model."),
+        skinPath: optionalPathSchema("Optional explicit local 64x64 or legacy 64x32 classic/wide player skin PNG.")
       }
     },
-    async ({ modelPath, assetsRoot, outDir }) => {
+    async ({ modelPath, assetsRoot, outDir, sceneMode, offhandModelPath, offhandAssetsRoot, skinPath }) => {
       try {
         const { summary, artifacts } = await generateAssetReport({ modelPath, assetsRoot, outDir });
         return toToolResult({
@@ -143,7 +152,11 @@ export function createMcAssetServer() {
             input: {
               modelPath: path.resolve(modelPath),
               outDir: path.resolve(outDir),
-              ...(assetsRoot ? { assetsRoot: path.resolve(assetsRoot) } : {})
+              ...(assetsRoot ? { assetsRoot: path.resolve(assetsRoot) } : {}),
+              ...(sceneMode ? { sceneMode } : {}),
+              ...(offhandModelPath ? { offhandModelPath: path.resolve(offhandModelPath) } : {}),
+              ...(offhandAssetsRoot ? { offhandAssetsRoot: path.resolve(offhandAssetsRoot) } : {}),
+              ...(skinPath ? { skinPath: path.resolve(skinPath) } : {})
             }
           }
         });

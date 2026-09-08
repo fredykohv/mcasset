@@ -132,6 +132,38 @@ test("resolves parent models and inherits textures and elements", () => {
   assert.deepEqual(parsed.textureReferences, ["minecraft:block/stone"]);
 });
 
+test("inherits display contexts deeply and detects generated items through a parent chain", () => {
+  const resourcePackIndex = createResourcePackIndex([
+    {
+      path: "assets/minecraft/models/item/generated.json",
+      source: JSON.stringify({ parent: "minecraft:builtin/generated" })
+    },
+    {
+      path: "assets/minecraft/models/item/handheld.json",
+      source: JSON.stringify({
+        parent: "minecraft:item/generated",
+        display: {
+          thirdperson_righthand: { rotation: [0, -90, 55], translation: [0, 4, 0.5], scale: [0.85, 0.85, 0.85] }
+        }
+      })
+    }
+  ]);
+  const parsed = parseMinecraftModel(JSON.stringify({
+    parent: "minecraft:item/handheld",
+    textures: { layer0: "mcasset:item/sword" },
+    display: {
+      thirdperson_lefthand: { rotation: [0, 90, -55], translation: [0, 4, 0.5], scale: [0.85, 0.85, 0.85] }
+    }
+  }), "sword.json", {
+    modelPath: "/assets/mcasset/models/item/sword.json",
+    resourcePackIndex
+  });
+
+  assert.equal(parsed.modelKind, "generated_item");
+  assert.deepEqual(Object.keys(parsed.model.display).sort(), ["thirdperson_lefthand", "thirdperson_righthand"]);
+  assert.ok(parsed.parentReferences.includes("minecraft:builtin/generated"));
+});
+
 test("warns when a parent model cannot be resolved from folder context", () => {
   const parsed = parseMinecraftModel(
     JSON.stringify({
