@@ -63,7 +63,22 @@ The standalone asset view remains the default. To inspect scale, orientation, gr
 
 The shared scene uses a classic/wide 4px-arm player rig: 8x8x8 head, 8x12x4 torso, 4x12x4 arms and legs, and 32 model units of total height. `skinPath` is optional; without it the UI labels and renders a neutral mannequin. Only classic/wide `64x64` and legacy `64x32` PNG atlases are accepted. No remote skin download occurs.
 
-The main slot uses `display.thirdperson_righthand`; the offhand uses `display.thirdperson_lefthand`. A missing left transform mirrors the authored right transform. Missing or invalid transforms use a documented vanilla-handheld fallback and remain visible as warnings/errors. This uses Minecraft-compatible XYZ rotation composition on a static wrist mount and does not claim exact Minecraft pose fidelity. It also does not establish in-game registration, installation, equipping, animation, combat, or blocking behavior.
+The main slot uses `display.thirdperson_righthand`; the offhand uses `display.thirdperson_lefthand`. Left-hand sign correction (translation X and rotation Y/Z) applies even to an explicitly authored left entry; scale is not mirrored. A missing left entry falls back to that model's right entry before parent contexts are inherited. Missing displays use identity, not a guessed sword/handheld preset; missing and invalid contexts remain visible as warnings/errors.
+
+Equipment uses the Java 26.1.2 standing `ITEM` pose, with idle bob frozen: both occupied arms pitch forward 18 degrees from their shoulders. Items and arms share the same shoulder transform, followed by the game's hand-layer coordinate basis and the selected item display transform. Coordinates are model pixels with feet at Y=0 and forward +Z; the player and items use the same scale. Existing item meshes are already centered by -8, so they must not be centered again.
+
+The normalized hand chain, with `s = +1` for right and `-1` for left, is:
+
+```text
+T(-5*s, 22, 0) * Rx(-18deg) * T(-s, -10, 2) * Rx(90deg) * Ry(180deg) * display
+display = T(s*tx, ty, tz) * Rx(rx) * Ry(s*ry) * Rz(s*rz) * Scale
+```
+
+This follows the versioned `ItemInHandLayer`, `HumanoidModel` and `ItemTransform` conventions, not arbitrary offsets to avoid collisions. See [26.1.2 hand layer](https://github.com/ma4z-sys/Minecraft-26.1.2/blob/07edb8a26d7cfe8f095ccbd57bcf99d486e1203f/net/minecraft/client/renderer/entity/layers/ItemInHandLayer.java#L29-L39), [display transform application](https://github.com/ma4z-sys/Minecraft-26.1.2/blob/07edb8a26d7cfe8f095ccbd57bcf99d486e1203f/net/minecraft/client/resources/model/cuboid/ItemTransform.java#L17-L58), and [vanilla handheld metadata](https://github.com/misode/mcmeta/blob/26.1.2-assets/assets/minecraft/models/item/handheld.json). The first two are a version-pinned, unofficial source mirror; the constants were cross-checked against the locally installed official client.
+
+For a reproducible demo use `examples/amethyst-sword/` in the main hand and `examples/spartan-shield/` in the offhand, each with its own assets root. The round shield has an explicitly authored sprite display that puts its plate outside the holding arm; it is not Minecraft's special shield renderer. The sword's hand translation is tailored to this original texture's grip. The example textures are unchanged; these are ordinary model `display` fields, not preview-only mesh nudges. The three-quarter view is the initial camera so thin equipped models are not hidden edge-on; front, side and back remain available.
+
+This standing snapshot does not establish in-game registration, installation, item use, animation, combat, or shield-blocking behavior. A missing display should be authored on the asset, not silently replaced by a renderer heuristic.
 
 ## How to interpret `summary.json`
 
@@ -137,4 +152,4 @@ Block entity and special renderer fidelity remains backlog; particle-only elemen
 - **CLI/Desktop only.** This is not part of the Vite website; it only renders inside a Copilot host that supports canvases (`canvas-renderer` capability). Hosts without that capability simply won't show the canvas in their catalog.
 - **Explicit paths only.** Like the MCP tools, it never scans directories on its own; it only reads the exact model/assets/summary/output/offhand/skin paths supplied in `input`, plus texture files already discovered while indexing those explicit roots.
 - **Loopback-only server.** Each open instance starts its own `127.0.0.1` HTTP server on an OS-assigned ephemeral port; it is not reachable outside the local machine.
-- **3D preview approximation.** Generated-item sprites use alpha-mask extrusion, and equipment uses a static classic-player hand mount rather than exact game pose/animation. Block-entity/special-renderer fidelity remains backlog.
+- **3D preview approximation.** Generated-item sprites use alpha-mask extrusion. Equipment follows the Java 26.1.2 standing hand chain with idle bob frozen; walking, attacks, shield blocking and special renderers remain out of scope.

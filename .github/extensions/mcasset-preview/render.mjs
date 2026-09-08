@@ -144,6 +144,7 @@ export function renderPage({ instanceId }) {
           <canvas id="viewer-canvas"></canvas>
         </div>
         <div class="actions">
+          <button type="button" data-view="three-quarter">Three-quarter</button>
           <button type="button" data-view="front">Front</button>
           <button type="button" data-view="side">Side</button>
           <button type="button" data-view="back">Back</button>

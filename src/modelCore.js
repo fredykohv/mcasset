@@ -505,10 +505,8 @@ function resolveParentModelRecursive(model, modelPath, context, stack) {
       ...normalizeRawTextures(model.textures)
     },
     display: {
-      ...(resolvedParent.model?.display && typeof resolvedParent.model.display === "object"
-        ? resolvedParent.model.display
-        : {}),
-      ...(model.display && typeof model.display === "object" ? model.display : {})
+      ...displayWithHandFallbacks(resolvedParent.model?.display),
+      ...displayWithHandFallbacks(model.display)
     }
   };
 
@@ -517,6 +515,19 @@ function resolveParentModelRecursive(model, modelPath, context, stack) {
   }
 
   return { model: merged, parentChain, parentReferences };
+}
+
+function displayWithHandFallbacks(display) {
+  if (!display || typeof display !== "object" || Array.isArray(display)) return {};
+  const resolved = { ...display };
+  // Minecraft fills the left context on each model before parent inheritance.
+  for (const perspective of ["firstperson", "thirdperson"]) {
+    const right = `${perspective}_righthand`, left = `${perspective}_lefthand`;
+    if (resolved[left] === undefined && resolved[right] !== undefined) {
+      resolved[left] = resolved[right];
+    }
+  }
+  return resolved;
 }
 
 function resolveParentPath(parent, modelPath, modelIndex) {

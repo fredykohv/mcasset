@@ -340,7 +340,7 @@ function renderActiveScene() {
     skinDimensions
   });
   viewer.setModelGroup(group);
-  viewer.frameGroup(group, { view: "front" });
+  viewer.frameGroup(group, { view: "three-quarter" });
 
   const transformIssues = group.userData.equipmentDiagnostics.flatMap((entry) =>
     entry.issues.map((issue) => `${entry.slot}: ${issue.message}`)

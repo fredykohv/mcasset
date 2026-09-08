@@ -19,10 +19,10 @@ export const EQUIPMENT_SLOTS = Object.freeze({
   OFFHAND: "offhand"
 });
 
-const DEFAULT_RIGHT_HAND_TRANSFORM = Object.freeze({
-  rotation: [0, -90, 55],
-  translation: [0, 4, 0.5],
-  scale: [0.85, 0.85, 0.85]
+const IDENTITY_DISPLAY_TRANSFORM = Object.freeze({
+  rotation: [0, 0, 0],
+  translation: [0, 0, 0],
+  scale: [1, 1, 1]
 });
 
 const PARTS = Object.freeze({
@@ -74,10 +74,11 @@ function cloneTransform(transform) {
   };
 }
 
-function mirrorRightTransform(transform) {
+function mirrorHandTransform(transform) {
+  const negate = (value) => value === 0 ? 0 : -value;
   return {
-    rotation: [transform.rotation[0], -transform.rotation[1], -transform.rotation[2]],
-    translation: [-transform.translation[0], transform.translation[1], transform.translation[2]],
+    rotation: [transform.rotation[0], negate(transform.rotation[1]), negate(transform.rotation[2])],
+    translation: [negate(transform.translation[0]), transform.translation[1], transform.translation[2]],
     scale: [...transform.scale]
   };
 }
@@ -98,45 +99,32 @@ function normalizeDisplayTransform(value) {
 }
 
 export function resolveEquipmentTransform(parsed, slot) {
+  if (!Object.values(EQUIPMENT_SLOTS).includes(slot)) {
+    throw new Error(`Unknown equipment slot: ${slot}`);
+  }
   const display = parsed?.model?.display;
-  const right = normalizeDisplayTransform(display?.thirdperson_righthand);
-  const left = normalizeDisplayTransform(display?.thirdperson_lefthand);
   const issues = [];
-
-  if (slot === EQUIPMENT_SLOTS.MAIN_HAND) {
-    if (right) {
-      return { transform: right, source: "thirdperson_righthand", issues };
-    }
+  const isLeft = slot === EQUIPMENT_SLOTS.OFFHAND;
+  const context = isLeft ? "thirdperson_lefthand" : "thirdperson_righthand";
+  let selected = display?.[context];
+  let source = context;
+  if (isLeft && selected === undefined && display?.thirdperson_righthand !== undefined) {
+    selected = display.thirdperson_righthand;
+    source = "mirrored_thirdperson_righthand";
+    issues.push({ severity: "warning", message: "Missing display.thirdperson_lefthand; using the right-hand display entry and Minecraft's left-hand mirroring." });
+  }
+  let transform = normalizeDisplayTransform(selected);
+  if (!transform) {
     issues.push({
-      severity: display?.thirdperson_righthand === undefined ? "warning" : "error",
-      message: display?.thirdperson_righthand === undefined
-        ? "Missing display.thirdperson_righthand; using the documented vanilla handheld fallback."
-        : "Invalid display.thirdperson_righthand; expected finite rotation/translation/scale vectors, so the fallback is shown."
+      severity: selected === undefined ? "warning" : "error",
+      message: selected === undefined
+        ? `Missing display.${context}; using Minecraft's identity display transform, not a guessed weapon preset. Author this item's hand display for the intended grip.`
+        : `Invalid display.${context}; expected finite rotation/translation/scale vectors. An identity display transform is shown.`
     });
-    return { transform: cloneTransform(DEFAULT_RIGHT_HAND_TRANSFORM), source: "fallback", issues };
+    transform = cloneTransform(IDENTITY_DISPLAY_TRANSFORM);
+    source = "fallback";
   }
-
-  if (left) {
-    return { transform: left, source: "thirdperson_lefthand", issues };
-  }
-  if (right) {
-    issues.push({
-      severity: "warning",
-      message: "Missing display.thirdperson_lefthand; mirroring the authored right-hand transform for this static preview."
-    });
-    return { transform: mirrorRightTransform(right), source: "mirrored_thirdperson_righthand", issues };
-  }
-  issues.push({
-    severity: display?.thirdperson_lefthand === undefined ? "warning" : "error",
-    message: display?.thirdperson_lefthand === undefined
-      ? "Missing hand display transforms; using the mirrored vanilla handheld fallback for offhand."
-      : "Invalid display.thirdperson_lefthand; expected finite rotation/translation/scale vectors, so the fallback is shown."
-  });
-  return {
-    transform: mirrorRightTransform(DEFAULT_RIGHT_HAND_TRANSFORM),
-    source: "mirrored_fallback",
-    issues
-  };
+  return { transform: isLeft ? mirrorHandTransform(transform) : transform, source, issues };
 }
 
 function setFaceUvs(geometry, rects, width, height, mirrorU = false) {
@@ -195,7 +183,18 @@ export function buildClassicPlayerGroup({ skinTexture = null, skinDimensions = n
   Object.entries(PARTS).forEach(([name, definition]) => {
     const mirrorLegacyLimb =
       skinDimensions?.height === 32 && (name === "leftArm" || name === "leftLeg");
-    group.add(createPart(name, definition, material, rects?.[name], skinDimensions, mirrorLegacyLimb));
+    const part = createPart(name, definition, material, rects?.[name], skinDimensions, mirrorLegacyLimb);
+    if (name === "rightArm" || name === "leftArm") {
+      const sign = name === "rightArm" ? -1 : 1;
+      const pivot = new THREE.Group();
+      pivot.name = `${name}Pivot`;
+      pivot.position.set(sign * 5, 22, 0);
+      part.position.set(sign, -4, 0);
+      pivot.add(part);
+      group.add(pivot);
+    } else {
+      group.add(part);
+    }
   });
   return group;
 }
@@ -207,20 +206,27 @@ export function applyDisplayTransform(group, transform) {
   group.rotation.set(...transform.rotation.map(THREE.MathUtils.degToRad));
 }
 
-function addEquipment(root, slot, equipment, diagnostics) {
+function addEquipment(player, slot, equipment, diagnostics) {
   if (!equipment?.parsed) {
     return;
   }
+  const isRight = slot === EQUIPMENT_SLOTS.MAIN_HAND;
+  const shoulder = player.getObjectByName(isRight ? "rightArmPivot" : "leftArmPivot");
+  // Java 26.1.2 standing ArmPose.ITEM, with idle bob deliberately frozen.
+  shoulder.rotation.x = -Math.PI / 10;
   const mount = new THREE.Group();
   mount.name = slot === EQUIPMENT_SLOTS.MAIN_HAND ? "Main hand mount" : "Offhand mount";
-  mount.position.set(slot === EQUIPMENT_SLOTS.MAIN_HAND ? -6 : 6, 12, 0);
+  // ItemInHandLayer expressed in our feet-at-zero, +Y-up, +Z-forward pixels.
+  // Geometry already has its -8 centering; don't apply that a second time.
+  mount.position.set(isRight ? -1 : 1, -10, 2);
+  mount.rotation.set(Math.PI / 2, Math.PI, 0, "XYZ");
 
   const item = buildModelGroup(equipment.parsed, { textureIndex: equipment.textureIndex ?? new Map() });
   item.name = slot === EQUIPMENT_SLOTS.MAIN_HAND ? "Main hand item" : "Offhand item";
   const resolved = resolveEquipmentTransform(equipment.parsed, slot);
   applyDisplayTransform(item, resolved.transform);
   mount.add(item);
-  root.add(mount);
+  shoulder.add(mount);
   diagnostics.push({ slot, transformSource: resolved.source, issues: resolved.issues });
 }
 
@@ -232,10 +238,11 @@ export function buildEquipmentScene({
 } = {}) {
   const group = new THREE.Group();
   group.name = "Classic player equipment preview";
-  group.add(buildClassicPlayerGroup({ skinTexture, skinDimensions }));
+  const player = buildClassicPlayerGroup({ skinTexture, skinDimensions });
+  group.add(player);
   const diagnostics = [];
-  addEquipment(group, EQUIPMENT_SLOTS.MAIN_HAND, mainHand, diagnostics);
-  addEquipment(group, EQUIPMENT_SLOTS.OFFHAND, offhand, diagnostics);
+  addEquipment(player, EQUIPMENT_SLOTS.MAIN_HAND, mainHand, diagnostics);
+  addEquipment(player, EQUIPMENT_SLOTS.OFFHAND, offhand, diagnostics);
   group.userData.equipmentDiagnostics = diagnostics;
   return group;
 }

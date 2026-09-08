@@ -78,7 +78,7 @@ export async function renderModel(viewer, state, onStatus) {
       skinDimensions: state.equipment.skin
     });
     viewer.setModelGroup(group);
-    viewer.frameGroup(group, { view: "front" });
+    viewer.frameGroup(group, { view: "three-quarter" });
     const issues = group.userData.equipmentDiagnostics.flatMap((entry) =>
       entry.issues.map((issue) => `${entry.slot}: ${issue.message}`)
     );
@@ -86,6 +86,7 @@ export async function renderModel(viewer, state, onStatus) {
     const offhandSummary = state.equipment.offhand?.summary;
     const notes = [
       state.equipment.skin ? "Local classic skin loaded." : "Neutral mannequin shown.",
+      "Standing equipped pose (Java 26.1.2 hand transforms; idle bob frozen).",
       state.equipment.offhand ? "Both equipment slots rendered." : "Offhand is empty.",
       ...(offhandSummary
         ? [

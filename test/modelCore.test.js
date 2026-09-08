@@ -41,6 +41,21 @@ test("resolves chained texture variables through inherited texture maps", () => 
   assert.equal(resolveTextureReference("#missing", { all: "minecraft:block/stone" }), "#missing");
 });
 
+test("child right-hand display supplies its left fallback before inheriting parent contexts", () => {
+  const parent = {
+    parent: "minecraft:builtin/generated",
+    display: { thirdperson_lefthand: { translation: [10, 6, 12] } }
+  };
+  const parsed = parseMinecraftModel(JSON.stringify({
+    parent: "mcasset:item/template",
+    textures: { layer0: "mcasset:item/sword" },
+    display: { thirdperson_righthand: { rotation: [0, -90, 55] } }
+  }), "sword.json", { resourcePackIndex: createResourcePackIndex([
+    { path: "assets/mcasset/models/item/template.json", source: JSON.stringify(parent) }
+  ]) });
+  assert.deepEqual(parsed.model.display.thirdperson_lefthand, { rotation: [0, -90, 55] });
+});
+
 test("builtin/generated is an engine terminal, not a missing resource-pack file", () => {
   for (const parent of ["builtin/generated", "minecraft:builtin/generated"]) {
     const parsed = parseMinecraftModel(JSON.stringify({

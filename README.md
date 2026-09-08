@@ -26,11 +26,11 @@ You can still upload a single model JSON without a folder using the **Model JSON
 
 ### Classic player equipment preview
 
-The website's asset-only orbit view remains the default. Enable **Preview on classic player (opt in)** to place the selected model in the main hand of a shared classic/wide player rig (4px arms, 32 model units tall). An additional model JSON can be assigned to the offhand at the same time. Use **Front**, **Side**, and **Back** or orbit freely to inspect scale, orientation, grip position, and clipping.
+The website's asset-only orbit view remains the default. Enable **Preview on classic player (opt in)** to place the selected model in the main hand of a shared classic/wide player rig (4px arms, 32 model units tall). An additional model JSON can be assigned to the offhand at the same time. Equipment starts in **Three-quarter** view so thin items are visible; use **Front**, **Side**, and **Back** or orbit freely to inspect scale, orientation, grip position, and clipping.
 
 The player is a clearly labelled neutral mannequin unless you explicitly select a local PNG skin. Supported skin atlases are classic/wide `64x64` and legacy `64x32`; slim/Alex geometry is not supported. mcasset never downloads a skin and does not bundle or copy Minecraft's Steve texture.
 
-Equipment placement applies authored `display.thirdperson_righthand` and `display.thirdperson_lefthand` transforms. If the left-hand transform is missing, mcasset mirrors the authored right-hand transform; if no usable hand transform exists, it visibly reports and uses the vanilla handheld fallback. This is a deliberate static hand-mount approximation, not exact game pose or renderer parity. A good external preview does not prove the item is registered, installable, equippable, or functional in-game.
+Equipment placement follows Java 26.1.2's standing `ITEM` shoulder/hand chain and the authored third-person display fields, with idle bob frozen. Left-hand translation X and rotation Y/Z are mirrored even for explicit left entries. Missing transforms are shown with identity and a warning, not an invented sword preset. The included sword and round shield examples have their own authored grips; they can be loaded from `examples/amethyst-sword` and `examples/spartan-shield`. See the [equipment workflow](docs/agent-workflow.md#equipment-scene-workflow) for versioned references and exact conventions. A good external preview does not prove the item is registered, installable, equippable, or functional in-game.
 
 For local vanilla testing, select the folder that contains `assets/minecraft/...`, for example a Minecraft version assets extraction with paths such as `assets/minecraft/models/block/cube_all.json` and `assets/minecraft/textures/block/stone.png`.
 
@@ -164,6 +164,6 @@ mcasset currently provides deterministic checks for JSON/model structure and tex
 
 Uploaded item textures can be matched by basename or common resource-pack paths such as `item/name.png`, `textures/item/name.png`, and `assets/minecraft/textures/item/name.png`.
 
-Generated item previews approximate thickness by extruding opaque texture pixels from `layer0` alpha. Equipment mode applies third-person display transforms to a static hand mount, but pose, transform order, lighting, and grip behavior remain approximations rather than exact Minecraft renderer parity.
+Generated item previews approximate thickness by extruding opaque texture pixels from `layer0` alpha. Equipment uses a game-derived standing hand attachment, but lighting, animation, item-use poses and special-rendered shields are not full Minecraft renderer parity.
 
 Advanced Minecraft features such as block-entity and special-renderer emulation, animation, armor/head equipment, item registration, tinting, UV remapping, and full Minecraft rendering-engine parity are intentionally left for future iterations.

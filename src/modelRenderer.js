@@ -104,7 +104,9 @@ export function createViewer(canvas) {
       ? new THREE.Vector3(0, 0, -1)
       : view === "side"
         ? new THREE.Vector3(1, 0, 0)
-        : new THREE.Vector3(0, 0, 1);
+        : view === "three-quarter"
+          ? new THREE.Vector3(1, 0, 1).normalize()
+          : new THREE.Vector3(0, 0, 1);
     camera.position.copy(center).add(direction.multiplyScalar(Math.max(radius, 12)));
     camera.position.y += size.y * 0.08;
     camera.lookAt(center);
